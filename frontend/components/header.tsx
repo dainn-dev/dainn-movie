@@ -90,18 +90,12 @@ function NavLinks({ mobile = false }: { mobile?: boolean }) {
     {
       name: "Home",
       href: "/",
-      dropdown: [
-        { name: "Home 01", href: "/" },
-        { name: "Home 02", href: "/home-v2" },
-        { name: "Home 03", href: "/home-v3" },
-      ],
+      dropdown: null,
     },
     {
       name: "Movies",
       href: "/movies",
       dropdown: [
-        { name: "Movie Grid", href: "/movies/grid" },
-        { name: "Movie List", href: "/movies/list" },
         { name: "Movie Single", href: "/movies/1" },
       ],
     },
@@ -109,9 +103,6 @@ function NavLinks({ mobile = false }: { mobile?: boolean }) {
       name: "Celebrities",
       href: "/celebrities",
       dropdown: [
-        { name: "Celebrity Grid 01", href: "/celebrities/grid-1" },
-        { name: "Celebrity Grid 02", href: "/celebrities/grid-2" },
-        { name: "Celebrity List", href: "/celebrities/list" },
         { name: "Celebrity Single", href: "/celebrities/1" },
       ],
     },
@@ -119,19 +110,16 @@ function NavLinks({ mobile = false }: { mobile?: boolean }) {
       name: "News",
       href: "/news",
       dropdown: [
-        { name: "Blog List", href: "/news/list" },
-        { name: "Blog Grid", href: "/news/grid" },
         { name: "Blog Detail", href: "/news/1" },
       ],
     },
     {
       name: "Community",
-      href: "/community",
+      href: "/user/profile",
       dropdown: [
         { name: "User Favorite Grid", href: "/user/favorites/grid" },
-        { name: "User Favorite List", href: "/user/favorites/list" },
         { name: "User Profile", href: "/user/profile" },
-        { name: "User Rate", href: "/user/rate" },
+        { name: "User Rated", href: "/user/rated" },
       ],
     },
   ]

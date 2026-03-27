@@ -10,7 +10,7 @@ import { WriteReviewDialog } from "@/components/write-review-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
-export default function MovieSingle({ params }: { params: { id: string } }) {
+export default function MovieSingle({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = React.use(params)
   // In a real app, you would fetch movie data based on the ID
   const movie = {

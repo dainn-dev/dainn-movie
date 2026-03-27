@@ -17,9 +17,8 @@ const dosis = Dosis({
 })
 
 export const metadata: Metadata = {
-  title: "Open Pediatrics",
-  description: "Open Pediatrics - Healthcare for children",
-    generator: 'v0.dev'
+  title: "DMovie",
+  description: "DMovie - Nền tảng xem phim cộng đồng",
 }
 
 export default function RootLayout({

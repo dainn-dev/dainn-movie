@@ -6,12 +6,20 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://api:5000
+      - NEXT_PUBLIC_API_URL=http://localhost:5000
       - NEXT_PUBLIC_CF_R2_URL=${CF_R2_PUBLIC_URL}
-      - NEXT_PUBLIC_SIGNALR_URL=http://api:5000/hubs/chat
+      - NEXT_PUBLIC_SIGNALR_URL=http://localhost:5000/hubs/chat
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - dmovie
     restart: unless-stopped
 
   api:
@@ -22,16 +30,19 @@ services:
       - "5000:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - ConnectionStrings__Default=Host=postgres;Database=moviesocial;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
-      - Redis__Connection=redis:6379
+      - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=moviesocial;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - ConnectionStrings__Redis=redis:6379
       - Jwt__Secret=${JWT_SECRET}
-      - Jwt__Issuer=moviesocial-api
-      - Jwt__AccessTokenExpiry=15
-      - Jwt__RefreshTokenExpiry=43200
+      - Jwt__Issuer=MovieSocial
+      - Jwt__Audience=MovieSocial
+      - Jwt__AccessTokenExpiryMinutes=15
+      - Jwt__RefreshTokenExpiryDays=7
+      - Cors__AllowedOrigins__0=http://localhost:3000
       - Cloudflare__R2__AccountId=${CF_R2_ACCOUNT_ID}
       - Cloudflare__R2__AccessKeyId=${CF_R2_ACCESS_KEY_ID}
       - Cloudflare__R2__SecretAccessKey=${CF_R2_SECRET_ACCESS_KEY}
       - Cloudflare__R2__BucketName=${CF_R2_BUCKET_NAME}
+      - Cloudflare__R2__PublicUrl=${CF_R2_PUBLIC_URL}
     depends_on:
       postgres:
         condition: service_healthy
@@ -42,6 +53,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 15s
+    networks:
+      - dmovie
     restart: unless-stopped
 
   postgres:
@@ -59,11 +73,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    networks:
+      - dmovie
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redisdata:/data
     ports:
@@ -73,8 +90,15 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
+      start_period: 5s
+    networks:
+      - dmovie
     restart: unless-stopped
 
 volumes:
   pgdata:
   redisdata:
+
+networks:
+  dmovie:
+    driver: bridge

@@ -1,0 +1,35 @@
+# Development overrides — applied automatically by `docker compose up`
+# Do NOT commit secrets to this file — use .env instead
+services:
+  frontend:
+    build:
+      target: deps          # Stop at deps stage for faster rebuilds
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:5000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules   # Prevent host node_modules from overriding container
+      - /app/.next
+    command: npm run dev
+
+  api:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__Postgres=Host=postgres;Port=5432;Database=moviesocial_dev;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+    volumes:
+      - ./backend:/src
+    # Expose additional port for HTTPS in dev
+    ports:
+      - "5000:8080"
+      - "5001:8081"
+
+  postgres:
+    environment:
+      - POSTGRES_DB=moviesocial_dev
+    ports:
+      - "5432:5432"   # Expose for local DB tools (DBeaver, pgAdmin, etc.)
+
+  redis:
+    ports:
+      - "6379:6379"   # Expose for local Redis tools

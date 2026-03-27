@@ -4,10 +4,11 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Facebook, Twitter, Linkedin, Play, ChevronRight } from "lucide-react"
 
-export default function CelebritySingle({ params }: { params: { id: string } }) {
+export default async function CelebritySingle({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   // In a real app, you would fetch celebrity data based on the ID
   const celebrity = {
-    id: params.id,
+    id,
     name: "Hugh Jackman",
     role: "Actor | Producer",
     image: "/placeholder.svg?height=500&width=350",
