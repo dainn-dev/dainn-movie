@@ -1,0 +1,37 @@
+# ===== FRONTEND (Next.js) =====
+frontend/node_modules
+frontend/.next/
+frontend/out/
+frontend/build
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.pnpm-debug.log*
+frontend/.env*
+frontend/.vercel
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+
+# ===== BACKEND (ASP.NET Core) =====
+backend/**/*.user
+backend/**/*.suo
+backend/**/.vs/
+backend/**/bin/
+backend/**/obj/
+backend/**/*.log
+backend/**/.env*
+backend/**/appsettings.Production.json
+
+# ===== SHARED =====
+.env
+.env.*
+*.env
+
+# ===== CLAUDE / MCP =====
+.mcp.json
+frontend/.claude/settings.local.json
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+desktop.ini

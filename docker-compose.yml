@@ -1,0 +1,80 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:5000
+      - NEXT_PUBLIC_CF_R2_URL=${CF_R2_PUBLIC_URL}
+      - NEXT_PUBLIC_SIGNALR_URL=http://api:5000/hubs/chat
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: MovieSocial.Api/Dockerfile
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__Default=Host=postgres;Database=moviesocial;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      - Redis__Connection=redis:6379
+      - Jwt__Secret=${JWT_SECRET}
+      - Jwt__Issuer=moviesocial-api
+      - Jwt__AccessTokenExpiry=15
+      - Jwt__RefreshTokenExpiry=43200
+      - Cloudflare__R2__AccountId=${CF_R2_ACCOUNT_ID}
+      - Cloudflare__R2__AccessKeyId=${CF_R2_ACCESS_KEY_ID}
+      - Cloudflare__R2__SecretAccessKey=${CF_R2_SECRET_ACCESS_KEY}
+      - Cloudflare__R2__BucketName=${CF_R2_BUCKET_NAME}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=moviesocial
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d moviesocial"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

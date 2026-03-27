@@ -1,0 +1,164 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-nunito: "Nunito", sans-serif;
+  --font-dosis: "Dosis", sans-serif;
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 255, 255, 255;
+  --background-end-rgb: 255, 255, 255;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(to bottom, transparent, rgb(var(--background-end-rgb))) rgb(var(--background-start-rgb));
+  font-family: var(--font-nunito);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-dosis);
+}
+
+.page-single {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+  background-color: #020d18;
+  color: white;
+}
+
+.md-logo {
+  width: 119px;
+  height: auto;
+  margin-bottom: 2rem;
+}
+
+.redbtn {
+  background-color: #dd003f;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.25rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  font-family: var(--font-dosis);
+  display: inline-block;
+  text-decoration: none;
+}
+
+.redbtn:hover {
+  background-color: #aa0030;
+}
+
+.coming-ct {
+  margin-bottom: 2rem;
+}
+
+.time {
+  display: flex;
+  gap: 1rem;
+  margin: 2rem 0;
+}
+
+.it-time {
+  text-align: center;
+}
+
+.it-time span {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #dd003f;
+  font-family: var(--font-dosis);
+}
+
+.it-time p {
+  text-transform: uppercase;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+}
+
+.email {
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: transparent;
+  color: white;
+  margin-right: 0.5rem;
+  border-radius: 0.25rem;
+  width: 60%;
+}
+
+.email::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.preloader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #020d18;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.status {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.status span {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #dd003f;
+  animation: pulse 1s infinite alternate;
+}
+
+.status span:nth-child(2) {
+  animation-delay: 0.3s;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .time {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .it-time {
+    width: 45%;
+    margin-bottom: 1rem;
+  }
+
+  .email {
+    width: 100%;
+    margin-bottom: 1rem;
+    margin-right: 0;
+  }
+}

@@ -1,0 +1,30 @@
+# Compress Context Skill
+
+Chạy khi conversation quá dài (50+ messages) hoặc bắt đầu session mới.
+
+## Steps
+
+1. **Summarize:** Đã làm gì, decisions được đưa ra, tasks đang làm, blockers
+2. **Archive:** Save vào `.claude/memory/archive/YYYY-MM-DD-HH-summary.md`
+3. **Rewrite MEMORY.md:** Fresh, concise (dưới 200 lines)
+4. **Update decisions.md:** Append any new decisions
+5. **Confirm:** "Context compressed. Archive saved to [path]."
+
+## Format archive file
+
+```markdown
+# Session Summary — YYYY-MM-DD HH:MM
+
+## Đã hoàn thành
+- [task 1]
+- [task 2]
+
+## Decisions mới
+- [decision 1]
+
+## Còn dang dở
+- [item 1]
+
+## Blockers
+- [blocker nếu có]
+```

@@ -1,0 +1,46 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev)",
+      "Bash(npm run build)",
+      "Bash(npm run lint)",
+      "Bash(npm run start)",
+      "Bash(npm install *)",
+      "Bash(npx *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git branch *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(mkdir *)",
+      "Bash(cat *)"
+    ],
+    "deny": []
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/pre-task.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/post-task.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
