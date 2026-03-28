@@ -81,7 +81,7 @@ const favoriteMovies = [
 ]
 
 // Define the ListIcon and GridIcon components
-const ListIcon = () => (
+const ListIcon = ({ className }: { className?: string }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="24"
@@ -92,6 +92,7 @@ const ListIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
+    className={className}
   >
     <line x1="8" y1="6" x2="21" y2="6"></line>
     <line x1="8" y1="12" x2="21" y2="12"></line>
@@ -102,7 +103,7 @@ const ListIcon = () => (
   </svg>
 )
 
-const GridIcon = () => (
+const GridIcon = ({ className }: { className?: string }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="24"
@@ -113,6 +114,7 @@ const GridIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
+    className={className}
   >
     <rect x="3" y="3" width="7" height="7"></rect>
     <rect x="14" y="3" width="7" height="7"></rect>

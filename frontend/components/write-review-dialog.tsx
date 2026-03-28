@@ -18,12 +18,18 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Star } from "lucide-react"
 
+import { useAuth } from "@/contexts/auth-context"
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? ""
+
 interface WriteReviewDialogProps {
   movieTitle: string
   movieId: string
+  onSubmitted?: () => void
 }
 
-export function WriteReviewDialog({ movieTitle, movieId }: WriteReviewDialogProps) {
+export function WriteReviewDialog({ movieTitle, movieId, onSubmitted }: WriteReviewDialogProps) {
+  const { accessToken } = useAuth()
   const [open, setOpen] = useState(false)
   const [rating, setRating] = useState(0)
   const [reviewTitle, setReviewTitle] = useState("")
@@ -32,34 +38,44 @@ export function WriteReviewDialog({ movieTitle, movieId }: WriteReviewDialogProp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!accessToken) {
+      alert("Đăng nhập để viết đánh giá.")
+      return
+    }
     setIsSubmitting(true)
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-
-    // In a real app, you would send the review data to your API
-    console.log({
-      movieId,
-      rating,
-      reviewTitle,
-      reviewContent,
-    })
-
-    // Reset form and close dialog
-    setRating(0)
-    setReviewTitle("")
-    setReviewContent("")
-    setIsSubmitting(false)
-    setOpen(false)
-
-    // Show success message (in a real app, you might use a toast notification)
-    alert("Review submitted successfully!")
+    try {
+      const res = await fetch(`${API}/api/movies/${movieId}/reviews`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          title: reviewTitle,
+          body: reviewContent,
+          score: rating,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert((data as { message?: string }).message ?? "Gửi review thất bại.")
+        return
+      }
+      setRating(0)
+      setReviewTitle("")
+      setReviewContent("")
+      setOpen(false)
+      onSubmitted?.()
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>Write Review</Button>
+        <Button type="button">Viết đánh giá</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>

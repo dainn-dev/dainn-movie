@@ -14,7 +14,7 @@ export default function Footer() {
             <Link href="/">
               <Image
                 src="/placeholder.svg?height=58&width=119"
-                alt="Open Pediatrics"
+                alt="DMovie"
                 width={119}
                 height={58}
                 className="mb-4"
@@ -136,7 +136,7 @@ export default function Footer() {
       {/* Copyright */}
       <div className="border-t border-gray-800">
         <div className="container mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center">
-          <p className="text-sm text-gray-400">© 2025 Open Pediatrics. All rights reserved.</p>
+          <p className="text-sm text-gray-400">© 2026 DMovie. All rights reserved.</p>
           <div className="flex items-center mt-2 md:mt-0">
             <a href="#" className="text-sm text-gray-400 flex items-center hover:text-primary">
               Back to top <ChevronUp className="ml-1 h-4 w-4" />

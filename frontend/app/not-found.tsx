@@ -36,7 +36,7 @@ export default function NotFound() {
             <Image
               className="md-logo mx-auto"
               src="/images/logo1.png"
-              alt="Open Pediatrics Logo"
+              alt="DMovie Logo"
               width={119}
               height={58}
               priority

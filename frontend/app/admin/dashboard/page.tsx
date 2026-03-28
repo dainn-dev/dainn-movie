@@ -34,7 +34,6 @@ import {
   Plus,
   Filter,
   Film,
-  Users,
   Server,
   Layers,
   LinkIcon,
@@ -42,83 +41,9 @@ import {
   ImageIcon,
 } from "lucide-react"
 import AdminSidebar from "@/components/admin-sidebar"
+import { AdminLiveStats } from "@/components/admin-live-stats"
+import { AdminModerationSection } from "@/components/admin-moderation-section"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-
-// Mock data for dashboard stats
-const dashboardStats = [
-  { title: "Total Movies", value: 1245, icon: Film, change: "+12%" },
-  { title: "Total Users", value: 8432, icon: Users, change: "+5%" },
-  { title: "News Articles", value: 342, icon: FileText, change: "+8%" },
-  { title: "Celebrities", value: 567, icon: User, change: "+3%" },
-]
-
-// Mock data for pending movies
-const pendingMovies = [
-  {
-    id: 1,
-    title: "City Lights",
-    user: "edward_kennedy",
-    category: "Documentary",
-    uploadDate: "2025-01-10",
-    thumbnail: "/placeholder.svg?height=120&width=200",
-  },
-  {
-    id: 2,
-    title: "The Last Stand",
-    user: "jessica_williams",
-    category: "Feature Film",
-    uploadDate: "2025-01-08",
-    thumbnail: "/placeholder.svg?height=120&width=200",
-  },
-  {
-    id: 3,
-    title: "Ocean Depths",
-    user: "robert_davis",
-    category: "Documentary",
-    uploadDate: "2025-01-05",
-    thumbnail: "/placeholder.svg?height=120&width=200",
-  },
-]
-
-// Mock data for recent users
-const recentUsers = [
-  {
-    id: 1,
-    name: "Michael Chen",
-    username: "mike_c",
-    email: "michael@example.com",
-    joinDate: "2025-01-15",
-    status: "active",
-    avatar: "/placeholder.svg?height=40&width=40",
-  },
-  {
-    id: 2,
-    name: "Sarah Johnson",
-    username: "sarah_j",
-    email: "sarah@example.com",
-    joinDate: "2025-01-14",
-    status: "active",
-    avatar: "/placeholder.svg?height=40&width=40",
-  },
-  {
-    id: 3,
-    name: "David Wilson",
-    username: "dave_w",
-    email: "david@example.com",
-    joinDate: "2025-01-12",
-    status: "suspended",
-    avatar: "/placeholder.svg?height=40&width=40",
-  },
-  {
-    id: 4,
-    name: "Amanda Lee",
-    username: "amanda_l",
-    email: "amanda@example.com",
-    joinDate: "2025-01-10",
-    status: "active",
-    avatar: "/placeholder.svg?height=40&width=40",
-  },
-]
 
 // Mock data for all movies
 const allMovies = [
@@ -888,10 +813,6 @@ export default function AdminDashboard() {
     return allMovies.find((movie) => movie.id === id)
   }
 
-  const getPendingMovieById = (id: number) => {
-    return pendingMovies.find((movie) => movie.id === id)
-  }
-
   const getChapterById = (id: number) => {
     return allChapters.find((chapter) => chapter.id === id)
   }
@@ -1018,157 +939,10 @@ export default function AdminDashboard() {
           {/* Dashboard Tab */}
           {activeTab === "dashboard" && (
             <div className="space-y-8">
-              {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {dashboardStats.map((stat, index) => (
-                  <Card key={index}>
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-                      <stat.icon className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{stat.value.toLocaleString()}</div>
-                      <p className="text-xs text-muted-foreground flex items-center mt-1">
-                        <span className="text-green-500 mr-1">{stat.change}</span> from last month
-                      </p>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              {/* Stats Cards — live API + legacy mock fallback label */}
+              <AdminLiveStats />
 
-              {/* Pending Approvals */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Pending Approvals</CardTitle>
-                  <CardDescription>Movies waiting for your approval</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Movie</TableHead>
-                          <TableHead>Uploaded By</TableHead>
-                          <TableHead>Category</TableHead>
-                          <TableHead>Upload Date</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {pendingMovies.length > 0 ? (
-                          pendingMovies.map((movie) => (
-                            <TableRow key={movie.id}>
-                              <TableCell>
-                                <div className="flex items-center gap-3">
-                                  <Image
-                                    src={movie.thumbnail || "/placeholder.svg"}
-                                    alt={movie.title}
-                                    width={80}
-                                    height={45}
-                                    className="rounded"
-                                  />
-                                  <div>
-                                    <p className="font-medium">{movie.title}</p>
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell>{movie.user}</TableCell>
-                              <TableCell>{movie.category}</TableCell>
-                              <TableCell>{new Date(movie.uploadDate).toLocaleDateString()}</TableCell>
-                              <TableCell>
-                                <div className="flex flex-col gap-2">
-                                  <div className="flex gap-2">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-8"
-                                      onClick={() => {
-                                        setSelectedItem(movie.id)
-                                        setApproveDialogOpen(true)
-                                      }}
-                                    >
-                                      <Check className="h-4 w-4 mr-1" /> Approve
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-8"
-                                      onClick={() => {
-                                        setSelectedItem(movie.id)
-                                        setRejectDialogOpen(true)
-                                      }}
-                                    >
-                                      <X className="h-4 w-4 mr-1" /> Reject
-                                    </Button>
-                                  </div>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        ) : (
-                          <TableRow>
-                            <TableCell colSpan={5} className="text-center py-8">
-                              <p className="text-muted-foreground">No pending approvals</p>
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Recent Users */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Users</CardTitle>
-                  <CardDescription>New users who joined recently</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>User</TableHead>
-                          <TableHead>Email</TableHead>
-                          <TableHead>Join Date</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {recentUsers.map((user) => (
-                          <TableRow key={user.id}>
-                            <TableCell>
-                              <div className="flex items-center gap-3">
-                                <Image
-                                  src={user.avatar || "/placeholder.svg"}
-                                  alt={user.name}
-                                  width={32}
-                                  height={32}
-                                  className="rounded-full"
-                                />
-                                <div>
-                                  <p className="font-medium">{user.name}</p>
-                                  <p className="text-xs text-muted-foreground">@{user.username}</p>
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>{user.email}</TableCell>
-                            <TableCell>{new Date(user.joinDate).toLocaleDateString()}</TableCell>
-                            <TableCell>{getStatusBadge(user.status)}</TableCell>
-                            <TableCell>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
+              <AdminModerationSection />
             </div>
           )}
 
@@ -2361,7 +2135,7 @@ export default function AdminDashboard() {
                 <label className="text-sm font-medium">Category</label>
                 <Select
                   value={createArticleFormData.category}
-                  onChange={(e) => setCreateArticleFormData({ ...createArticleFormData, category: e.target.value })}
+                  onValueChange={(value) => setCreateArticleFormData({ ...createArticleFormData, category: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select category" />
@@ -2399,7 +2173,7 @@ export default function AdminDashboard() {
                 <label className="text-sm font-medium">Status</label>
                 <Select
                   value={createArticleFormData.status}
-                  onChange={(e) => setCreateArticleFormData({ ...createArticleFormData, status: e.target.value })}
+                  onValueChange={(value) => setCreateArticleFormData({ ...createArticleFormData, status: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select status" />
@@ -2483,7 +2257,7 @@ export default function AdminDashboard() {
                 <label className="text-sm font-medium">Role</label>
                 <Select
                   value={createCelebrityFormData.role}
-                  onChange={(e) => setCreateCelebrityFormData({ ...createCelebrityFormData, role: e.target.value })}
+                  onValueChange={(value) => setCreateCelebrityFormData({ ...createCelebrityFormData, role: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select role" />
@@ -2542,7 +2316,7 @@ export default function AdminDashboard() {
                 <label className="text-sm font-medium">Status</label>
                 <Select
                   value={createCelebrityFormData.status}
-                  onChange={(e) => setCreateCelebrityFormData({ ...createCelebrityFormData, status: e.target.value })}
+                  onValueChange={(value) => setCreateCelebrityFormData({ ...createCelebrityFormData, status: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select status" />
@@ -2618,7 +2392,7 @@ export default function AdminDashboard() {
                   <label className="text-sm font-medium">Category</label>
                   <Select
                     value={createMovieFormData.category}
-                    onChange={(e) => setCreateMovieFormData({ ...createMovieFormData, category: e.target.value })}
+                    onValueChange={(value) => setCreateMovieFormData({ ...createMovieFormData, category: value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select category" />
@@ -2636,7 +2410,7 @@ export default function AdminDashboard() {
                   <label className="text-sm font-medium">Genre</label>
                   <Select
                     value={createMovieFormData.genre}
-                    onChange={(e) => setCreateMovieFormData({ ...createMovieFormData, genre: e.target.value })}
+                    onValueChange={(value) => setCreateMovieFormData({ ...createMovieFormData, genre: value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select genre" />
@@ -2713,7 +2487,7 @@ export default function AdminDashboard() {
                 <label className="text-sm font-medium">Status</label>
                 <Select
                   value={createMovieFormData.status}
-                  onChange={(value) => setCreateMovieFormData({ ...createMovieFormData, status: value })}
+                  onValueChange={(value) => setCreateMovieFormData({ ...createMovieFormData, status: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select status" />
@@ -2954,14 +2728,12 @@ export default function AdminDashboard() {
                   const movieId = Number.parseInt(value)
                   setSelectedMovie(movieId)
 
-                  // Get the pending movie details
-                  const pendingMovie = getPendingMovieById(selectedItem || 0)
-                  if (pendingMovie) {
-                    // Set chapter form data with default values
+                  const approvedPending = allMovies.find((m) => m.id === selectedItem && m.status === "pending")
+                  if (approvedPending) {
                     setChapterFormData({
-                      title: pendingMovie.title,
-                      duration: "45 min", // Default duration
-                      order: getChaptersByMovieId(movieId).length + 1, // Next order number
+                      title: approvedPending.title,
+                      duration: "45 min",
+                      order: getChaptersByMovieId(movieId).length + 1,
                     })
                   }
 
@@ -3056,7 +2828,7 @@ export default function AdminDashboard() {
                   <label className="text-xs text-muted-foreground">Quality</label>
                   <Select
                     value={serverFormData.quality}
-                    onChange={(value) => setServerFormData({ ...serverFormData, quality: value })}
+                    onValueChange={(value) => setServerFormData({ ...serverFormData, quality: value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select quality" />

@@ -8,6 +8,9 @@ import FeaturedCelebrities from "@/components/featured-celebrities"
 import LatestNews from "@/components/latest-news"
 import TrailerSection from "@/components/trailer-section"
 
+/** Avoid blocking the build when the API is unreachable (CI/Vercel route timeout). */
+export const dynamic = "force-dynamic"
+
 export default function Home() {
   return (
     <div className="bg-background">

@@ -53,7 +53,7 @@ export default function ComingSoon() {
                 <Image
                   className="md-logo"
                   src="/images/logo1.png"
-                  alt="Open Pediatrics Logo"
+                  alt="DMovie Logo"
                   width={119}
                   height={58}
                   priority

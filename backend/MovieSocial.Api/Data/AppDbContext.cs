@@ -22,6 +22,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<FriendRequest> FriendRequests => Set<FriendRequest>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<ContentReport> ContentReports => Set<ContentReport>();
     public DbSet<News> News => Set<News>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<NewsTag> NewsTags => Set<NewsTag>();
@@ -153,6 +154,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.HasIndex(n => new { n.UserId, n.IsRead });
             e.HasOne(n => n.User).WithMany(u => u.Notifications).HasForeignKey(n => n.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        m.Entity<ContentReport>(e =>
+        {
+            e.HasIndex(r => new { r.Status, r.CreatedAt });
+            e.HasIndex(r => r.ReporterId);
+            e.HasOne(r => r.Reporter).WithMany().HasForeignKey(r => r.ReporterId).OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── News ─────────────────────────────────────────────────────────────

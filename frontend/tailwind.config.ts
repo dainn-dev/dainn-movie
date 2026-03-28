@@ -22,7 +22,7 @@ const config: Config = {
           foreground: "hsl(var(--popover-foreground))",
         },
         primary: {
-          DEFAULT: "hsl(var(--primary))",
+          DEFAULT: "#dd003f",
           foreground: "hsl(var(--primary-foreground))",
         },
         secondary: {
@@ -61,7 +61,6 @@ const config: Config = {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
-        primary: "#dd003f",
       },
       borderRadius: {
         lg: "var(--radius)",

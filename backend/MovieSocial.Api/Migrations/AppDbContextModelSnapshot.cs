@@ -98,6 +98,45 @@ namespace MovieSocial.Api.Migrations
                     b.ToTable("Chapters", "public");
                 });
 
+            modelBuilder.Entity("MovieSocial.Api.Models.Entities.ContentReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ReporterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReporterId");
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.ToTable("ContentReports", "public");
+                });
+
             modelBuilder.Entity("MovieSocial.Api.Models.Entities.Favorite", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -779,6 +818,17 @@ namespace MovieSocial.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Movie");
+                });
+
+            modelBuilder.Entity("MovieSocial.Api.Models.Entities.ContentReport", b =>
+                {
+                    b.HasOne("MovieSocial.Api.Models.Entities.User", "Reporter")
+                        .WithMany()
+                        .HasForeignKey("ReporterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Reporter");
                 });
 
             modelBuilder.Entity("MovieSocial.Api.Models.Entities.Favorite", b =>
