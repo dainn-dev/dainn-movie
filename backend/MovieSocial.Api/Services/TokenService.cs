@@ -47,22 +47,58 @@ public class TokenService(IConfiguration config, IDistributedCache cache)
 
     public async Task StoreRefreshTokenAsync(Guid userId, string token)
     {
-        var key = RefreshKey(token);
-        await cache.SetStringAsync(key, userId.ToString(), new DistributedCacheEntryOptions
+        var options = new DistributedCacheEntryOptions
         {
-            AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(_refreshDays)
-        });
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(_refreshDays),
+        };
+
+        var userKey = UserRtKey(userId);
+        var oldToken = await cache.GetStringAsync(userKey);
+        if (!string.IsNullOrEmpty(oldToken))
+            await cache.RemoveAsync(RefreshKey(oldToken));
+
+        await cache.SetStringAsync(RefreshKey(token), userId.ToString(), options);
+        await cache.SetStringAsync(userKey, token, options);
     }
 
-    public async Task<Guid?> ValidateRefreshTokenAsync(string token)
+    /// <summary>M1a — chỉ refresh token mới nhất (theo user) là hợp lệ; token cũ → session_revoked.</summary>
+    public async Task<RefreshTokenValidateResult> ValidateRefreshTokenAsync(string token)
     {
-        var key   = RefreshKey(token);
-        var value = await cache.GetStringAsync(key);
-        return value is null ? null : Guid.Parse(value);
+        if (string.IsNullOrWhiteSpace(token))
+            return RefreshTokenValidateResult.Invalid();
+
+        var rtKey = RefreshKey(token);
+        var userIdStr = await cache.GetStringAsync(rtKey);
+        if (userIdStr is null)
+            return RefreshTokenValidateResult.Invalid();
+
+        if (!Guid.TryParse(userIdStr, out var userId))
+            return RefreshTokenValidateResult.Invalid();
+
+        var current = await cache.GetStringAsync(UserRtKey(userId));
+        if (current != token)
+            return RefreshTokenValidateResult.SessionRevoked();
+
+        return RefreshTokenValidateResult.Valid(userId);
     }
 
-    public async Task RevokeRefreshTokenAsync(string token) =>
-        await cache.RemoveAsync(RefreshKey(token));
+    public async Task RevokeRefreshTokenAsync(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            return;
+
+        var rtKey = RefreshKey(token);
+        var userIdStr = await cache.GetStringAsync(rtKey);
+        await cache.RemoveAsync(rtKey);
+
+        if (userIdStr is not null && Guid.TryParse(userIdStr, out var userId))
+        {
+            var uk = UserRtKey(userId);
+            var cur = await cache.GetStringAsync(uk);
+            if (cur == token)
+                await cache.RemoveAsync(uk);
+        }
+    }
 
     // ── Access token blacklist (for logout) ──────────────────────────────────
     public async Task BlacklistAccessTokenAsync(string jti, DateTime expiry)
@@ -103,4 +139,18 @@ public class TokenService(IConfiguration config, IDistributedCache cache)
     }
 
     private static string RefreshKey(string token) => $"rt:{token}";
+
+    private static string UserRtKey(Guid userId) => $"user_rt:{userId}";
+}
+
+/// <summary>Kết quả kiểm tra refresh token (M1a — phân biệt hết hạn vs đăng nhập nơi khác).</summary>
+public sealed record RefreshTokenValidateResult(bool Ok, Guid? UserId, string? ErrorCode)
+{
+    public static RefreshTokenValidateResult Valid(Guid userId) => new(true, userId, null);
+
+    public static RefreshTokenValidateResult Invalid() =>
+        new(false, null, "invalid_refresh");
+
+    public static RefreshTokenValidateResult SessionRevoked() =>
+        new(false, null, "session_revoked");
 }

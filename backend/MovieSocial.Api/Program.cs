@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using System.Threading.RateLimiting;
 using FluentValidation;
 using Hangfire;
@@ -7,8 +8,11 @@ using Hangfire.Dashboard;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -16,6 +20,7 @@ using MovieSocial.Api;
 using MovieSocial.Api.Data;
 using MovieSocial.Api.Endpoints;
 using MovieSocial.Api.Hubs;
+using MovieSocial.Api.Options;
 using MovieSocial.Api.Services;
 using Serilog;
 using StackExchange.Redis;
@@ -98,11 +103,26 @@ try
     builder.Services.AddSignalR();
     builder.Services.AddResponseCompression(o => o.EnableForHttps = true);
 
+    builder.Services.Configure<ForwardedHeadersOptions>(o =>
+    {
+        o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        o.KnownNetworks.Clear();
+        o.KnownProxies.Clear();
+    });
+    builder.Services.Configure<RateLimitOptions>(builder.Configuration.GetSection(RateLimitOptions.SectionName));
+    builder.Services.Configure<CatalogCacheOptions>(builder.Configuration.GetSection(CatalogCacheOptions.SectionName));
+    builder.Services.Configure<WebPushOptions>(builder.Configuration.GetSection(WebPushOptions.SectionName));
+    builder.Services.AddScoped<CatalogReadCache>();
+    builder.Services.AddSingleton<R2AmazonS3Singleton>();
+
     builder.Services.AddRateLimiter(options =>
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(static ctx =>
+        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
         {
+            var rl = ctx.RequestServices.GetRequiredService<IOptionsSnapshot<RateLimitOptions>>().Value;
+            var permit = Math.Clamp(rl.PermitLimit, 1, 100_000);
+            var windowMin = Math.Clamp(rl.WindowMinutes, 1, 1440);
             var key =
                 ctx.User.Identity?.IsAuthenticated == true
                     ? (ctx.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
@@ -112,8 +132,8 @@ try
             return RateLimitPartition.GetFixedWindowLimiter(key,
                 _ => new FixedWindowRateLimiterOptions
                 {
-                    PermitLimit = 400,
-                    Window = TimeSpan.FromMinutes(1),
+                    PermitLimit = permit,
+                    Window = TimeSpan.FromMinutes(windowMin),
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                     QueueLimit = 0,
                 });
@@ -182,13 +202,28 @@ try
     builder.Services.AddScoped<ReviewRatingService>();
     builder.Services.AddScoped<UploadRateLimitService>();
     builder.Services.AddScoped<VideoUploadService>();
+    builder.Services.AddScoped<StreamEndpointService>();
     builder.Services.AddScoped<TranscodeProcessor>();
+    builder.Services.AddScoped<VideoProcessingService>();
     builder.Services.AddScoped<SocialService>();
+    builder.Services.AddScoped<NewEpisodeNotificationService>();
+    builder.Services.AddScoped<PushNotificationService>();
     builder.Services.AddScoped<AdminService>();
+    builder.Services.AddScoped<EntitlementService>();
+    builder.Services.AddScoped<PurchaseService>();
+    builder.Services.AddScoped<PayoutService>();
 
     var app = builder.Build();
 
+    app.UseForwardedHeaders();
     app.UseSerilogRequestLogging();
+    app.Use(async (ctx, next) =>
+    {
+        ctx.Response.Headers.TryAdd("X-Content-Type-Options", "nosniff");
+        ctx.Response.Headers.TryAdd("X-Frame-Options", "DENY");
+        ctx.Response.Headers.TryAdd("Referrer-Policy", "strict-origin-when-cross-origin");
+        await next();
+    });
     app.UseResponseCompression();
 
     if (app.Environment.IsDevelopment())
@@ -207,8 +242,29 @@ try
     app.UseAuthorization();
     app.UseRateLimiter();
 
-    // Health check endpoint
-    app.MapHealthChecks("/health", new HealthCheckOptions { AllowCachingResponses = false });
+    // Health: JSON cho probe/orchestrator; không áp dụng global rate limit
+    app.MapHealthChecks("/health", new HealthCheckOptions
+    {
+        AllowCachingResponses = false,
+        ResponseWriter = async (ctx, report) =>
+        {
+            ctx.Response.ContentType = "application/json; charset=utf-8";
+            var body = new
+            {
+                status = report.Status.ToString(),
+                totalDurationMs = report.TotalDuration.TotalMilliseconds,
+                checks = report.Entries.Select(e => new
+                {
+                    name = e.Key,
+                    status = e.Value.Status.ToString(),
+                    description = e.Value.Description,
+                    durationMs = e.Value.Duration.TotalMilliseconds,
+                    error = e.Value.Exception?.Message,
+                }),
+            };
+            await ctx.Response.WriteAsync(JsonSerializer.Serialize(body)).ConfigureAwait(false);
+        },
+    }).DisableRateLimiting();
 
     // Auth endpoints
     app.MapAuthEndpoints();
@@ -222,6 +278,7 @@ try
     app.MapVideoEndpoints();
     app.MapSocialEndpoints();
     app.MapAdminEndpoints();
+    app.MapPurchaseEndpoints();
     app.MapHub<ChatHub>("/hubs/chat").RequireAuthorization();
 
     app.Run();

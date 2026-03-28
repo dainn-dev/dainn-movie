@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react"
 import { ChatSystem } from "@/components/chat-system"
+import { Toaster } from "@/components/ui/toaster"
 import { AuthProvider } from "@/contexts/auth-context"
 
 interface ProvidersProps {
@@ -13,6 +14,7 @@ export function Providers({ children }: ProvidersProps) {
     <AuthProvider>
       {children}
       <ChatSystem />
+      <Toaster />
     </AuthProvider>
   )
 }

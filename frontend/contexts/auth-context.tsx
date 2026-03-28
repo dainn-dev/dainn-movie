@@ -2,6 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import type { ReactNode } from "react"
+import { toast } from "@/hooks/use-toast"
+import { unsubscribeLocalPush } from "@/lib/push-notifications"
 
 interface User {
   id: string
@@ -73,7 +75,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ refreshToken: "" }),
         credentials: "include",
       })
-      if (!res.ok) { clearAuth(); return null }
+      if (!res.ok) {
+        let code: string | undefined
+        try {
+          const errBody = (await res.json()) as { code?: string }
+          code = typeof errBody.code === "string" ? errBody.code : undefined
+        } catch {
+          /* ignore */
+        }
+        clearAuth()
+        if (code === "session_revoked") {
+          toast({
+            title: "Phiên đã kết thúc",
+            description: "Tài khoản đã đăng nhập trên thiết bị hoặc trình duyệt khác. Vui lòng đăng nhập lại.",
+            variant: "destructive",
+          })
+        }
+        return null
+      }
       const data = await res.json()
       applyTokens(data.accessToken, data.user)
       return data.accessToken as string
@@ -111,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(async () => {
+    await unsubscribeLocalPush()
     try {
       await fetch(`${API}/api/auth/logout`, {
         method: "POST",

@@ -22,6 +22,9 @@ public record AuthResponse(
     UserDto User
 );
 
+/// <summary>Payload JSON cho client — refresh chỉ trong cookie httpOnly (M1a).</summary>
+public record AuthTokenResponse(string AccessToken, UserDto User);
+
 public record UserDto(
     Guid Id,
     string Username,

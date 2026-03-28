@@ -14,6 +14,18 @@ public class Movie : BaseEntity
     public string Status { get; set; } = "draft"; // draft | processing | published | rejected
     public long ViewCount { get; set; } = 0;
 
+    /// <summary>M10: cache aggregate từ bảng Ratings — cập nhật trong ReviewRatingService.</summary>
+    public double AvgRatingCached { get; set; }
+
+    /// <summary>M10: số lượng Rating (1 user 1 điểm).</summary>
+    public int RatingCountCached { get; set; }
+
+    /// <summary>M10: số review text.</summary>
+    public int ReviewCountCached { get; set; }
+
+    /// <summary>Giá bán lẻ VND; null hoặc 0 = xem miễn phí.</summary>
+    public int? ListingPriceVnd { get; set; }
+
     public Guid UploadedById { get; set; }
     public User UploadedBy { get; set; } = null!;
 
@@ -25,5 +37,7 @@ public class Movie : BaseEntity
     public ICollection<Rating> Ratings { get; set; } = [];
     public ICollection<Favorite> Favorites { get; set; } = [];
     public ICollection<Watchlist> Watchlist { get; set; } = [];
+    public ICollection<MovieFollow> MovieFollows { get; set; } = [];
     public ICollection<WatchHistory> WatchHistory { get; set; } = [];
+    public ICollection<Purchase> Purchases { get; set; } = [];
 }

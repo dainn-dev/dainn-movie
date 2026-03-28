@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
+import { Slider } from "@/components/ui/slider"
 import { useAuth } from "@/contexts/auth-context"
 import type {
   CelebrityListDto,
@@ -16,6 +17,7 @@ import type {
   PagedResult,
   VideoConfirmRequest,
   VideoPresignRequest,
+  VideoSourceInfoDto,
 } from "@/types/api"
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? ""
@@ -35,6 +37,26 @@ function guessVideoMime(filename: string): string {
   if (f.endsWith(".avi")) return "video/x-msvideo"
   if (f.endsWith(".mkv")) return "video/x-matroska"
   return "video/mp4"
+}
+
+const TRIM_EPS = 0.35
+
+async function waitForChapterVideoReady(
+  chapterId: string,
+  opts?: { maxMs?: number; intervalMs?: number }
+): Promise<boolean> {
+  const maxMs = opts?.maxMs ?? 120_000
+  const intervalMs = opts?.intervalMs ?? 1500
+  const deadline = Date.now() + maxMs
+  while (Date.now() < deadline) {
+    const r = await fetch(`${API}/api/chapters/${chapterId}/sources`)
+    if (r.ok) {
+      const list = (await r.json()) as VideoSourceInfoDto[]
+      if (list.some((s) => s.status === "ready")) return true
+    }
+    await new Promise((res) => setTimeout(res, intervalMs))
+  }
+  return false
 }
 
 export default function UploadPage() {
@@ -59,6 +81,13 @@ export default function UploadPage() {
   const [castAdded, setCastAdded] = useState<string[]>([])
 
   const [videoFile, setVideoFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [mediaMeta, setMediaMeta] = useState<{
+    duration: number
+    width: number
+    height: number
+  } | null>(null)
+  const [trimRange, setTrimRange] = useState<[number, number]>([0, 0])
   const [uploadPct, setUploadPct] = useState<number | null>(null)
   const [videoStatus, setVideoStatus] = useState<string | null>(null)
 
@@ -145,6 +174,38 @@ export default function UploadPage() {
     const id = setTimeout(() => searchCelebrities(celebrityQ), 320)
     return () => clearTimeout(id)
   }, [celebrityQ, searchCelebrities])
+
+  useEffect(() => {
+    if (!videoFile) {
+      setPreviewUrl(null)
+      setMediaMeta(null)
+      setTrimRange([0, 0])
+      return
+    }
+    const url = URL.createObjectURL(videoFile)
+    setPreviewUrl(url)
+    const el = document.createElement("video")
+    el.preload = "metadata"
+    el.muted = true
+    const onMeta = () => {
+      const d = el.duration
+      if (Number.isFinite(d) && d > 0) {
+        setMediaMeta({
+          duration: d,
+          width: el.videoWidth,
+          height: el.videoHeight,
+        })
+        setTrimRange([0, d])
+      }
+    }
+    el.addEventListener("loadedmetadata", onMeta)
+    el.src = url
+    el.load()
+    return () => {
+      el.removeEventListener("loadedmetadata", onMeta)
+      URL.revokeObjectURL(url)
+    }
+  }, [videoFile])
 
   async function submitInfo(e: React.FormEvent) {
     e.preventDefault()
@@ -280,7 +341,43 @@ export default function UploadPage() {
       setError((j as { message?: string }).message ?? "Xác nhận upload thất bại.")
       return
     }
-    setVideoStatus("Đã tải lên — đang xử lý (transcode stub).")
+
+    const [t0, t1] = trimRange
+    const dur = mediaMeta?.duration
+    const wantsTrim =
+      dur != null &&
+      dur > TRIM_EPS &&
+      (t0 > TRIM_EPS || t1 < dur - TRIM_EPS)
+
+    if (wantsTrim) {
+      setVideoStatus("Đang chờ video sẵn sàng để cắt theo khoảng đã chọn…")
+      const ready = await waitForChapterVideoReady(chapterId)
+      if (!ready) {
+        setVideoStatus(
+          "Đã upload. Video chưa sẵn sàng kịp để cắt tự động — vào Sửa phim để cắt sau (M4b)."
+        )
+        setStep(3)
+        persistDraft({ step: 3 })
+        return
+      }
+      const tr = await fetch(`${API}/api/chapters/${chapterId}/trim`, {
+        method: "POST",
+        headers: authJson,
+        body: JSON.stringify({ startSeconds: t0, endSeconds: t1 }),
+      })
+      if (!tr.ok) {
+        const j = await tr.json().catch(() => ({}))
+        setVideoStatus(
+          `Đã upload. Cắt video thất bại: ${(j as { message?: string }).message ?? tr.status}. Mở Sửa phim để thử lại.`
+        )
+        setStep(3)
+        persistDraft({ step: 3 })
+        return
+      }
+      setVideoStatus("Đã upload và cắt xong — đang / đã xử lý transcode.")
+    } else {
+      setVideoStatus("Đã tải lên — đang xử lý (transcode stub).")
+    }
     setStep(3)
     persistDraft({ step: 3 })
   }
@@ -449,9 +546,46 @@ export default function UploadPage() {
               onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
             />
             <p className="text-xs text-muted-foreground">
-              Cần cấu hình Cloudflare R2 trên API để presigned PUT hoạt động.
+              Xem lại tại chỗ, kéo điểm đầu/cuối để cắt (M4b). Cần R2 + ffmpeg trên API để cắt trên server.
             </p>
           </div>
+          {previewUrl && (
+            <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+              <video
+                key={previewUrl}
+                className="w-full max-h-[320px] rounded-md bg-black"
+                src={previewUrl}
+                controls
+                playsInline
+              />
+              {mediaMeta && mediaMeta.duration > 0 && (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    {Math.round(mediaMeta.width)}×{Math.round(mediaMeta.height)} ·{" "}
+                    {mediaMeta.duration.toFixed(1)}s
+                  </p>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Khoảng giữ lại (giây)</Label>
+                    <Slider
+                      min={0}
+                      max={mediaMeta.duration}
+                      step={0.1}
+                      value={trimRange}
+                      onValueChange={(v) => {
+                        const a = v[0] ?? 0
+                        const b = v[1] ?? mediaMeta.duration
+                        setTrimRange(a <= b ? [a, b] : [b, a])
+                      }}
+                    />
+                    <p className="text-xs tabular-nums">
+                      Bắt đầu {trimRange[0].toFixed(1)}s — Kết thúc {trimRange[1].toFixed(1)}s (độ dài{" "}
+                      {(trimRange[1] - trimRange[0]).toFixed(1)}s)
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           {uploadPct !== null && <Progress value={uploadPct} className="h-2" />}
           <div className="flex justify-between">
             <Button type="button" variant="outline" onClick={() => setStep(1)}>

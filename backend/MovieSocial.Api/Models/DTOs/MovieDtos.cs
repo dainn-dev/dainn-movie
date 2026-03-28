@@ -18,7 +18,8 @@ public record MovieSummaryDto(
     long    ViewCount,
     IEnumerable<GenreDto> Genres,
     string? Status = null,
-    DateTime? CreatedAt = null
+    DateTime? CreatedAt = null,
+    int? ListingPriceVnd = null
 );
 
 // ── Movie detail ──────────────────────────────────────────────────────────────
@@ -40,11 +41,16 @@ public record MovieDetailDto(
     IEnumerable<GenreDto>           Genres,
     IEnumerable<CastMemberDto>      Cast,
     IEnumerable<ChapterSummaryDto>  Chapters,
-    IEnumerable<MovieSummaryDto>    RelatedMovies
+    IEnumerable<MovieSummaryDto>    RelatedMovies,
+    int?    ListingPriceVnd,
+    bool    IsPaidListing,
+    bool    ViewerCanWatch,
+    bool    PurchaseRequired
 );
 
 // ── Chapters / streaming ─────────────────────────────────────────────────────
-public record VideoSourceInfoDto(Guid Id, string Quality, string Status);
+/// <param name="ExtraStreamEndpointCount">Số điểm phát thêm (CDN mirror / URL dự phòng), không tính key gốc trên VideoSource.</param>
+public record VideoSourceInfoDto(Guid Id, string Quality, string Status, int ExtraStreamEndpointCount = 0);
 
 public record ChapterSummaryDto(
     Guid    Id,
@@ -52,16 +58,33 @@ public record ChapterSummaryDto(
     int     Order,
     int?    DurationSeconds,
     string? ThumbnailUrl,
+    int?    IntroSkipEndSeconds,
+    bool    HasSubtitles,
     IEnumerable<VideoSourceInfoDto> VideoSources
 );
 
 public record ChapterCreatedDto(Guid Id, string Title, int Order);
 
-public record CreateChapterRequest(string Title, int Order, int? DurationSeconds, string? ThumbnailUrl);
+public record CreateChapterRequest(
+    string Title,
+    int Order,
+    int? DurationSeconds,
+    string? ThumbnailUrl,
+    int? IntroSkipEndSeconds = null,
+    string? SubtitleR2Key = null);
 
-public record UpdateChapterRequest(string? Title, int? Order, int? DurationSeconds, string? ThumbnailUrl);
+public record UpdateChapterRequest(
+    string? Title,
+    int? Order,
+    int? DurationSeconds,
+    string? ThumbnailUrl,
+    int? IntroSkipEndSeconds = null,
+    string? SubtitleR2Key = null);
 
 public record StreamUrlResponse(string Url);
+
+/// <summary>Kết quả kiểm tra quyền stream/subtitle (M8b).</summary>
+public readonly record struct StreamUrlGate(string? Url, int StatusCode, Guid? MovieId);
 
 // ── Reviews / ratings ────────────────────────────────────────────────────────
 public record ReviewDto(
@@ -102,7 +125,8 @@ public record CreateMovieRequest(
     int?    ReleaseYear,
     int?    RuntimeMinutes,
     string? MpaaRating,
-    IEnumerable<int> GenreIds
+    IEnumerable<int> GenreIds,
+    int? ListingPriceVnd = null
 );
 
 public record UpdateMovieRequest(
@@ -115,7 +139,8 @@ public record UpdateMovieRequest(
     int?     RuntimeMinutes,
     string?  MpaaRating,
     string?  Status,
-    IEnumerable<int>? GenreIds
+    IEnumerable<int>? GenreIds,
+    int? ListingPriceVnd = null
 );
 
 public record AddMovieCastRequest(
@@ -144,6 +169,23 @@ public record VideoConfirmRequest(
 );
 
 public record VideoConfirmResponse(Guid VideoSourceId);
+
+// ── M4b — trim / poster / phụ đề VTT ─────────────────────────────────────────
+public record TrimChapterRequest(double StartSeconds, double EndSeconds);
+
+public record ChapterPosterFromVideoRequest(double TimeSeconds);
+
+public record SubtitlePresignRequest(
+    Guid   MovieId,
+    Guid   ChapterId,
+    string Filename,
+    string ContentType);
+
+public record SubtitleConfirmRequest(
+    Guid   MovieId,
+    Guid   ChapterId,
+    string Key,
+    long   FileSizeBytes);
 
 // ── Celebrity ─────────────────────────────────────────────────────────────────
 public record CelebrityListDto(

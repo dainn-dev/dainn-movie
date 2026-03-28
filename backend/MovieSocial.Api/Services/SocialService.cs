@@ -238,7 +238,7 @@ public class SocialService(AppDbContext db)
             .Where(n => n.UserId == userId)
             .OrderByDescending(n => n.CreatedAt)
             .Take(limit)
-            .Select(n => new NotificationDto(n.Id, n.Type, n.Title, n.Body, n.IsRead, n.CreatedAt, n.ReferenceId))
+            .Select(n => new NotificationDto(n.Id, n.Type, n.Title, n.Body, n.IsRead, n.CreatedAt, n.ReferenceId, n.ReferenceMovieId))
             .ToListAsync();
     }
 
@@ -294,15 +294,41 @@ public class SocialService(AppDbContext db)
                 w.Movie.Slug,
                 w.Movie.PosterUrl,
                 w.Movie.ReleaseYear,
-                w.Movie.Ratings.Any() ? Math.Round(w.Movie.Ratings.Average(r => (double)r.Score), 1) : 0,
+                w.Movie.RatingCountCached > 0 ? Math.Round(w.Movie.AvgRatingCached, 1) : 0,
                 w.Movie.ViewCount,
                 w.Movie.MovieGenres.Select(mg => new GenreDto(mg.Genre.Id, mg.Genre.Name, mg.Genre.Slug)),
                 null,
-                null))
+                null,
+                w.Movie.ListingPriceVnd))
             .ToListAsync();
 
     public Task<bool> WatchlistContainsAsync(Guid userId, Guid movieId) =>
         db.Watchlist.AsNoTracking().AnyAsync(w => w.UserId == userId && w.MovieId == movieId);
+
+    // ── Movie follow (M9: notify new episodes for free titles) ─────────────────
+    public async Task<string?> FollowMovieAsync(Guid userId, Guid movieId)
+    {
+        if (!await db.Movies.AnyAsync(m => m.Id == movieId && m.Status == "published"))
+            return "Phim không tồn tại.";
+        if (await db.MovieFollows.AnyAsync(f => f.UserId == userId && f.MovieId == movieId))
+            return null;
+        db.MovieFollows.Add(new MovieFollow { UserId = userId, MovieId = movieId });
+        await db.SaveChangesAsync();
+        return null;
+    }
+
+    public async Task UnfollowMovieAsync(Guid userId, Guid movieId)
+    {
+        var f = await db.MovieFollows.FindAsync(userId, movieId);
+        if (f is not null)
+        {
+            db.MovieFollows.Remove(f);
+            await db.SaveChangesAsync();
+        }
+    }
+
+    public Task<bool> MovieFollowContainsAsync(Guid userId, Guid movieId) =>
+        db.MovieFollows.AsNoTracking().AnyAsync(f => f.UserId == userId && f.MovieId == movieId);
 
     // ── Watch history ──────────────────────────────────────────────────────────
     public async Task RecordWatchHistoryAsync(Guid userId, RecordWatchHistoryRequest req)
@@ -353,6 +379,16 @@ public class SocialService(AppDbContext db)
                 h.ProgressSeconds,
                 h.WatchedAt))
             .ToListAsync();
+    }
+
+    public async Task<int> GetWatchProgressSecondsAsync(Guid userId, Guid movieId, Guid chapterId)
+    {
+        var p = await db.WatchHistory.AsNoTracking()
+            .Where(h => h.UserId == userId && h.MovieId == movieId && h.ChapterId == chapterId)
+            .OrderByDescending(h => h.WatchedAt)
+            .Select(h => (int?)h.ProgressSeconds)
+            .FirstOrDefaultAsync();
+        return p ?? 0;
     }
 
     // ── Reports ────────────────────────────────────────────────────────────────

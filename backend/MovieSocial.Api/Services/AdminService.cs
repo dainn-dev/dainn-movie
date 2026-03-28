@@ -90,11 +90,12 @@ public class AdminService(AppDbContext db)
                 m.Slug,
                 m.PosterUrl,
                 m.ReleaseYear,
-                m.Ratings.Any() ? Math.Round(m.Ratings.Average(r => (double)r.Score), 1) : 0,
+                m.RatingCountCached > 0 ? Math.Round(m.AvgRatingCached, 1) : 0,
                 m.ViewCount,
                 m.MovieGenres.Select(mg => new GenreDto(mg.Genre.Id, mg.Genre.Name, mg.Genre.Slug)),
                 m.Status,
-                m.CreatedAt))
+                m.CreatedAt,
+                m.ListingPriceVnd))
             .ToListAsync();
 
         return new PagedResult<MovieSummaryDto>(items, new PaginationMeta(page, pageSize, total, (int)Math.Ceiling((double)total / pageSize)));
@@ -146,6 +147,99 @@ public class AdminService(AppDbContext db)
         if (r is null) return "Báo cáo không tồn tại.";
         r.Status = status;
         r.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return null;
+    }
+
+    public async Task<PagedResult<AdminPurchaseRowDto>> ListPurchasesAsync(int page, int pageSize)
+    {
+        page = page < 1 ? 1 : page;
+        pageSize = pageSize < 1 ? 20 : Math.Min(pageSize, 100);
+
+        var q = db.Purchases.AsNoTracking().OrderByDescending(p => p.CreatedAt);
+        var total = await q.CountAsync();
+        var items = await q
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(p => new AdminPurchaseRowDto(
+                p.Id,
+                p.UserId,
+                p.User.Username,
+                p.MovieId,
+                p.Movie.Title,
+                p.AmountVnd,
+                p.PlatformFeeVnd,
+                p.Status,
+                p.Provider,
+                p.CreatedAt,
+                p.CompletedAt))
+            .ToListAsync();
+
+        return new PagedResult<AdminPurchaseRowDto>(
+            items,
+            new PaginationMeta(page, pageSize, total, (int)Math.Ceiling((double)total / pageSize)));
+    }
+
+    /// <summary>Đánh dấu refunded — entitlement chỉ còn completed.</summary>
+    public async Task<string?> RefundPurchaseAsync(Guid purchaseId)
+    {
+        var p = await db.Purchases.FindAsync(purchaseId);
+        if (p is null) return "Đơn không tồn tại.";
+        if (p.Status != "completed") return "Chỉ hoàn tiền đơn đã thanh toán thành công.";
+        p.Status    = "refunded";
+        p.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return null;
+    }
+
+    /// <summary>Gỡ phim khỏi công khai (tranh chấp) — về draft.</summary>
+    public async Task<string?> UnpublishMovieDisputeAsync(Guid movieId)
+    {
+        var m = await db.Movies.FindAsync(movieId);
+        if (m is null) return "Phim không tồn tại.";
+        m.Status    = "draft";
+        m.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return null;
+    }
+
+    public async Task<PagedResult<AdminPayoutRowDto>> ListPayoutRequestsAsync(int page, int pageSize)
+    {
+        page = page < 1 ? 1 : page;
+        pageSize = pageSize < 1 ? 20 : Math.Min(pageSize, 100);
+
+        var q = db.PayoutRequests.AsNoTracking().OrderByDescending(r => r.CreatedAt);
+        var total = await q.CountAsync();
+        var items = await q
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(r => new AdminPayoutRowDto(
+                r.Id,
+                r.UserId,
+                r.User.Username,
+                r.AmountVnd,
+                r.Status,
+                r.CreatedAt,
+                r.ProcessedAt,
+                r.AdminNote))
+            .ToListAsync();
+
+        return new PagedResult<AdminPayoutRowDto>(
+            items,
+            new PaginationMeta(page, pageSize, total, (int)Math.Ceiling((double)total / pageSize)));
+    }
+
+    /// <summary>Đánh dấu đã chuyển tiền (paid) hoặc từ chối (rejected).</summary>
+    public async Task<string?> ResolvePayoutRequestAsync(Guid id, ResolvePayoutRequestBody body)
+    {
+        var r = await db.PayoutRequests.FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return "Yêu cầu không tồn tại.";
+        if (r.Status != "pending") return "Yêu cầu đã được xử lý.";
+
+        r.Status     = body.Paid ? "paid" : "rejected";
+        r.AdminNote  = string.IsNullOrWhiteSpace(body.Note) ? r.AdminNote : body.Note!.Trim();
+        r.ProcessedAt = DateTime.UtcNow;
+        r.UpdatedAt  = DateTime.UtcNow;
         await db.SaveChangesAsync();
         return null;
     }

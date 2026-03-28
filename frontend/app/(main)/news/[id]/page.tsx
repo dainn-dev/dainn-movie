@@ -3,10 +3,11 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Facebook, Twitter, Linkedin } from "lucide-react"
 
-export default function BlogDetail({ params }: { params: { id: string } }) {
+export default async function BlogDetail({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   // In a real app, you would fetch blog data based on the ID
   const blog = {
-    id: params.id,
+    id,
     title: "New Character Posters For Pirates Of The Caribbean",
     date: "27 Mar 2017",
     image: "/placeholder.svg?height=400&width=800",

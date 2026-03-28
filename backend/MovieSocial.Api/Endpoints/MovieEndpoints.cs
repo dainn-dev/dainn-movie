@@ -225,9 +225,11 @@ public static class MovieEndpoints
         .Produces(404);
 
         // GET /api/movies/slug/{slug}
-        group.MapGet("/slug/{slug}", async (string slug, MovieService svc) =>
+        group.MapGet("/slug/{slug}", async (HttpContext ctx, string slug, MovieService svc) =>
         {
-            var movie = await svc.GetDetailBySlugAsync(slug);
+            var uid = GetUserId(ctx.User);
+            var role = ctx.User.FindFirst("role")?.Value;
+            var movie = await svc.GetDetailBySlugAsync(slug, uid, role);
             return movie is null ? Results.NotFound() : Results.Ok(movie);
         })
         .WithSummary("Chi tiết phim theo slug")

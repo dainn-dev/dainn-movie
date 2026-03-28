@@ -17,6 +17,7 @@ export default function FriendsPage() {
   const { accessToken, user } = useAuth()
   const [friends, setFriends] = useState<FriendUserDto[]>([])
   const [incoming, setIncoming] = useState<FriendRequestDto[]>([])
+  const [outgoing, setOutgoing] = useState<FriendRequestDto[]>([])
   const [q, setQ] = useState("")
   const [hits, setHits] = useState<UserSearchResultDto[]>([])
   const [msg, setMsg] = useState<string | null>(null)
@@ -25,12 +26,14 @@ export default function FriendsPage() {
 
   const load = useCallback(async () => {
     if (!accessToken) return
-    const [f, i] = await Promise.all([
+    const [f, i, o] = await Promise.all([
       fetch(`${API}/api/social/friends`, { headers }),
       fetch(`${API}/api/social/friend-requests/incoming`, { headers }),
+      fetch(`${API}/api/social/friend-requests/outgoing`, { headers }),
     ])
     if (f.ok) setFriends(await f.json())
     if (i.ok) setIncoming(await i.json())
+    if (o.ok) setOutgoing(await o.json())
   }, [accessToken, headers])
 
   useEffect(() => {
@@ -102,7 +105,7 @@ export default function FriendsPage() {
       <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="md:col-span-1">
-            <UserSidebar activeItem="profile" />
+            <UserSidebar activeItem="friends" />
           </div>
           <div className="md:col-span-3 space-y-8">
             {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
@@ -121,6 +124,29 @@ export default function FriendsPage() {
                   </li>
                 ))}
               </ul>
+            </section>
+
+            <section className="rounded-lg border bg-card p-6 shadow-sm">
+              <h2 className="text-lg font-semibold mb-3">Lời mời đã gửi</h2>
+              {outgoing.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Không có lời mời đang chờ.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {outgoing.map((r) => (
+                    <li
+                      key={r.id}
+                      className="flex flex-wrap items-center justify-between gap-2 border rounded px-3 py-2 text-sm"
+                    >
+                      <span>
+                        Đang chờ <Badge variant="outline">@{r.receiverUsername}</Badge>
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(r.createdAt).toLocaleDateString()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
 
             <section className="rounded-lg border bg-card p-6 shadow-sm">

@@ -70,6 +70,49 @@ public static class AdminEndpoints
         })
             .Produces(204).Produces(400);
 
+        group.MapGet("/purchases", async (
+            [FromQuery] int page,
+            [FromQuery] int pageSize,
+            AdminService svc) =>
+            Results.Ok(await svc.ListPurchasesAsync(page, pageSize)))
+            .WithSummary("Danh sách đơn mua (M8)")
+            .Produces<PagedResult<AdminPurchaseRowDto>>();
+
+        group.MapPost("/purchases/{id:guid}/refund", async (Guid id, AdminService svc) =>
+        {
+            var err = await svc.RefundPurchaseAsync(id);
+            return err is not null ? Results.BadRequest(new { message = err }) : Results.NoContent();
+        })
+            .WithSummary("Hoàn tiền / đánh dấu refunded")
+            .Produces(204).Produces(400);
+
+        group.MapPost("/movies/{id:guid}/unpublish-dispute", async (Guid id, AdminService svc) =>
+        {
+            var err = await svc.UnpublishMovieDisputeAsync(id);
+            return err is not null ? Results.BadRequest(new { message = err }) : Results.NoContent();
+        })
+            .WithSummary("Gỡ phim (draft) khi tranh chấp")
+            .Produces(204).Produces(400);
+
+        group.MapGet("/payout-requests", async (
+            [FromQuery] int page,
+            [FromQuery] int pageSize,
+            AdminService svc) =>
+            Results.Ok(await svc.ListPayoutRequestsAsync(page, pageSize)))
+            .WithSummary("Danh sách yêu cầu rút tiền (M8)")
+            .Produces<PagedResult<AdminPayoutRowDto>>();
+
+        group.MapPost("/payout-requests/{id:guid}/resolve", async (
+            Guid id,
+            [FromBody] ResolvePayoutRequestBody body,
+            AdminService svc) =>
+        {
+            var err = await svc.ResolvePayoutRequestAsync(id, body);
+            return err is not null ? Results.BadRequest(new { message = err }) : Results.NoContent();
+        })
+            .WithSummary("Duyệt rút tiền (paid) hoặc từ chối (rejected)")
+            .Produces(204).Produces(400);
+
         return app;
     }
 }

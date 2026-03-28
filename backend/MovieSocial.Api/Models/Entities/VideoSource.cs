@@ -9,4 +9,6 @@ public class VideoSource : BaseEntity
     public string R2Key { get; set; } = null!;   // videos/{movieId}/{chapterId}/{quality}.mp4
     public long? FileSizeBytes { get; set; }
     public string Status { get; set; } = "processing"; // processing | ready | failed
+
+    public ICollection<VideoSourceEndpoint> StreamEndpoints { get; set; } = [];
 }

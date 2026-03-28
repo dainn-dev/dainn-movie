@@ -13,10 +13,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<MovieCast> MovieCast => Set<MovieCast>();
     public DbSet<Chapter> Chapters => Set<Chapter>();
     public DbSet<VideoSource> VideoSources => Set<VideoSource>();
+    public DbSet<VideoSourceEndpoint> VideoSourceEndpoints => Set<VideoSourceEndpoint>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Rating> Ratings => Set<Rating>();
     public DbSet<Favorite> Favorites => Set<Favorite>();
     public DbSet<Watchlist> Watchlist => Set<Watchlist>();
+    public DbSet<MovieFollow> MovieFollows => Set<MovieFollow>();
+    public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
     public DbSet<WatchHistory> WatchHistory => Set<WatchHistory>();
     public DbSet<Friendship> Friendships => Set<Friendship>();
     public DbSet<FriendRequest> FriendRequests => Set<FriendRequest>();
@@ -26,6 +29,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<News> News => Set<News>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<NewsTag> NewsTags => Set<NewsTag>();
+    public DbSet<Purchase> Purchases => Set<Purchase>();
+    public DbSet<PayoutRequest> PayoutRequests => Set<PayoutRequest>();
 
     protected override void OnModelCreating(ModelBuilder m)
     {
@@ -75,11 +80,37 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(ch => ch.Movie).WithMany(mv => mv.Chapters).HasForeignKey(ch => ch.MovieId);
         });
 
+        m.Entity<Purchase>(e =>
+        {
+            e.HasIndex(p => p.UserId);
+            e.HasIndex(p => p.MovieId);
+            e.HasIndex(p => new { p.UserId, p.MovieId, p.Status });
+            e.HasOne(p => p.User).WithMany(u => u.Purchases).HasForeignKey(p => p.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.Movie).WithMany(mv => mv.Purchases).HasForeignKey(p => p.MovieId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        m.Entity<PayoutRequest>(e =>
+        {
+            e.HasIndex(p => p.UserId);
+            e.HasIndex(p => new { p.UserId, p.Status });
+            e.HasOne(p => p.User).WithMany(u => u.PayoutRequests).HasForeignKey(p => p.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         // ── VideoSources ─────────────────────────────────────────────────────
         m.Entity<VideoSource>(e =>
         {
             e.HasIndex(vs => vs.R2Key).IsUnique();
             e.HasOne(vs => vs.Chapter).WithMany(ch => ch.VideoSources).HasForeignKey(vs => vs.ChapterId);
+        });
+
+        m.Entity<VideoSourceEndpoint>(e =>
+        {
+            e.HasIndex(ep => new { ep.VideoSourceId, ep.SortOrder });
+            e.HasOne(ep => ep.VideoSource).WithMany(vs => vs.StreamEndpoints).HasForeignKey(ep => ep.VideoSourceId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── Reviews ──────────────────────────────────────────────────────────
@@ -112,6 +143,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasKey(w => new { w.UserId, w.MovieId });
             e.HasOne(w => w.User).WithMany(u => u.Watchlist).HasForeignKey(w => w.UserId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(w => w.Movie).WithMany(mv => mv.Watchlist).HasForeignKey(w => w.MovieId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        m.Entity<MovieFollow>(e =>
+        {
+            e.HasKey(f => new { f.UserId, f.MovieId });
+            e.HasOne(f => f.User).WithMany(u => u.MovieFollows).HasForeignKey(f => f.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(f => f.Movie).WithMany(mv => mv.MovieFollows).HasForeignKey(f => f.MovieId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        m.Entity<PushSubscription>(e =>
+        {
+            e.HasIndex(s => s.Endpoint).IsUnique();
+            e.HasIndex(s => s.UserId);
+            e.HasOne(s => s.User).WithMany(u => u.PushSubscriptions).HasForeignKey(s => s.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── WatchHistory ─────────────────────────────────────────────────────

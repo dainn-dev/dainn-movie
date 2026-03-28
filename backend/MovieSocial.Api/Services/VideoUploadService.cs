@@ -23,6 +23,11 @@ public class VideoUploadService(
         ".mp4", ".mov", ".avi", ".mkv",
     };
 
+    private static readonly HashSet<string> AllowedSubtitleContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "text/vtt", "text/plain",
+    };
+
     public async Task<(VideoPresignResponse? Dto, string? Error, int Status)> PresignAsync(
         VideoPresignRequest req, Guid userId)
     {
@@ -92,6 +97,61 @@ public class VideoUploadService(
 
         jobs.Enqueue<TranscodeProcessor>(p => p.ProcessVideoSourceAsync(vs.Id));
         return (new VideoConfirmResponse(vs.Id), null, 200);
+    }
+
+    public async Task<(VideoPresignResponse? Dto, string? Error, int Status)> PresignSubtitleAsync(
+        SubtitlePresignRequest req, Guid userId)
+    {
+        var fn = Path.GetFileName(req.Filename);
+        if (string.IsNullOrWhiteSpace(fn) || !fn.EndsWith(".vtt", StringComparison.OrdinalIgnoreCase))
+            return (null, "Chỉ hỗ trợ file .vtt (WebVTT).", 400);
+
+        if (!AllowedSubtitleContentTypes.Contains(req.ContentType.Trim()))
+            return (null, "Content-Type phụ đề không hợp lệ (dùng text/vtt).", 400);
+
+        var movie = await db.Movies.AsNoTracking().FirstOrDefaultAsync(m => m.Id == req.MovieId);
+        if (movie is null) return (null, "Phim không tồn tại.", 404);
+        if (movie.UploadedById != userId) return (null, "Không có quyền.", 403);
+
+        var chapter = await db.Chapters.AsNoTracking().FirstOrDefaultAsync(c => c.Id == req.ChapterId);
+        if (chapter is null || chapter.MovieId != req.MovieId)
+            return (null, "Chapter không hợp lệ.", 400);
+
+        var key = $"videos/{req.MovieId}/{req.ChapterId}/captions.vtt";
+        var url = streamUrls.GetPresignedPutUrl(key, req.ContentType.Trim(), TimeSpan.FromMinutes(30));
+        if (string.IsNullOrEmpty(url))
+            return (null, "Cấu hình R2 thiếu — không thể tạo URL tải lên.", 503);
+
+        var (allowed, rateErr) = await rateLimit.TryConsumeAsync(userId).ConfigureAwait(false);
+        if (!allowed)
+            return (null, rateErr, 429);
+
+        var exp = DateTime.UtcNow.AddMinutes(30);
+        log.LogInformation("Presigned subtitle PUT key {Key}", key);
+        return (new VideoPresignResponse(url, key, exp), null, 200);
+    }
+
+    public async Task<(bool Ok, string? Error, int Status)> ConfirmSubtitleAsync(SubtitleConfirmRequest req, Guid userId)
+    {
+        var expectedPrefix = $"videos/{req.MovieId}/{req.ChapterId}/";
+        if (!req.Key.StartsWith(expectedPrefix, StringComparison.Ordinal) || !req.Key.EndsWith(".vtt", StringComparison.OrdinalIgnoreCase))
+            return (false, "Key object phụ đề không hợp lệ.", 400);
+
+        if (req.FileSizeBytes <= 0 || req.FileSizeBytes > 5 * 1024 * 1024)
+            return (false, "Kích thước file phụ đề không hợp lệ (tối đa 5MB).", 400);
+
+        var movie = await db.Movies.FirstOrDefaultAsync(m => m.Id == req.MovieId);
+        if (movie is null) return (false, "Phim không tồn tại.", 404);
+        if (movie.UploadedById != userId) return (false, "Không có quyền.", 403);
+
+        var chapter = await db.Chapters.FirstOrDefaultAsync(c => c.Id == req.ChapterId);
+        if (chapter is null || chapter.MovieId != req.MovieId)
+            return (false, "Chapter không hợp lệ.", 400);
+
+        chapter.SubtitleR2Key = req.Key;
+        chapter.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return (true, null, 200);
     }
 
     private static (string? Key, string? Error) BuildObjectKey(Guid movieId, Guid chapterId, string filename)
