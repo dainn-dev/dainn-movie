@@ -258,9 +258,9 @@ export default async function CelebritySingle({ params }: { params: Promise<{ id
                         immediately after which he was offered a starring role in the ABC-TV prison drama Correlli
                         (1995), opposite his future wife Deborra-Lee Furness. Several TV guest roles followed, as an
                         actor and variety compere. An accomplished singer, Jackman has starred as Gaston in the
-                        Australian production of "Beauty and the Beast." He appeared as Joe Gillis in the Australian
-                        production of "Sunset Boulevard." In 1998, he was cast as Curly in the Royal National Theatre's
-                        production of Trevor Nunn's Oklahoma. Jackman has made two feature films, the second of which,
+                        Australian production of &ldquo;Beauty and the Beast.&rdquo; He appeared as Joe Gillis in the
+                        Australian production of &ldquo;Sunset Boulevard.&rdquo; In 1998, he was cast as Curly in the
+                        Royal National Theatre&apos;s production of Trevor Nunn&apos;s Oklahoma. Jackman has made two feature films, the second of which,
                         Erskineville Kings (1999), garnered him an Australian Film Institute nomination for Best Actor
                         in 1999. Recently, he won the part of Logan/Wolverine in the Bryan Singer- directed comic-book
                         movie X-Men (2000). In his spare time, Jackman plays piano, golf, and guitar, and likes to

@@ -7,7 +7,8 @@
     "build": "next build",
     "build:node20": "fnm exec --using 20 -- pnpm run build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -49,9 +50,9 @@
     "lucide-react": "^0.454.0",
     "next": "15.5.14",
     "next-themes": "^0.4.4",
-    "react": "^18.2.0",
+    "react": "^18.3.1",
     "react-day-picker": "8.10.1",
-    "react-dom": "^18.2.0",
+    "react-dom": "^18.3.1",
     "react-hook-form": "^7.54.1",
     "react-resizable-panels": "^2.1.7",
     "recharts": "2.15.0",
@@ -65,10 +66,13 @@
     "node": ">=20.9.0"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
     "@types/node": "^22",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "postcss": "^8",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^15.5.14",
+    "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"
   }

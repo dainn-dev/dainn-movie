@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -77,7 +78,7 @@ export default function AdminSidebar({ activeItem, onCollapsedChange }: AdminSid
         <div className="flex flex-col h-full">
           <div className="p-4 border-b flex items-center justify-between">
             <Link href="/admin/dashboard" className="flex items-center min-w-0">
-              <img src="/placeholder.svg?height=32&width=32" alt="" className="h-8 w-8 shrink-0" />
+              <Image src="/placeholder.svg?height=32&width=32" alt="" width={32} height={32} className="h-8 w-8 shrink-0" />
               {!collapsed && <span className="ml-2 font-bold truncate">Admin</span>}
             </Link>
             <Button variant="ghost" size="icon" className="hidden md:flex shrink-0" onClick={() => setCollapsed((c) => !c)}>

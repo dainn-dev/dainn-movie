@@ -144,7 +144,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       clearAuth()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const refreshAccessToken = useCallback(silentRefresh, [silentRefresh])

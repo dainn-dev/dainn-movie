@@ -7,16 +7,23 @@ import MovieGrid from "@/components/movie-grid"
 import FeaturedCelebrities from "@/components/featured-celebrities"
 import LatestNews from "@/components/latest-news"
 import TrailerSection from "@/components/trailer-section"
+import { asRsc } from "@/lib/as-rsc"
 
 /** ISR: catalog BE đã cache Redis; giảm TTFB so với force-dynamic (M10-T8). */
 export const revalidate = 120
 
-export default function Home() {
+const MovieSliderEl = asRsc(MovieSlider)
+const MovieGridEl = asRsc<{ category?: string }>(MovieGrid)
+const LatestNewsEl = asRsc(LatestNews)
+const FeaturedCelebritiesEl = asRsc(FeaturedCelebrities)
+const TrailerSectionEl = asRsc(TrailerSection)
+
+export default async function Home() {
   return (
     <div className="bg-background">
       {/* Hero Slider */}
       <section className="w-full">
-        <MovieSlider />
+        <MovieSliderEl />
       </section>
 
       {/* In Theater Section */}
@@ -37,19 +44,19 @@ export default function Home() {
           </TabsList>
 
           <TabsContent value="popular">
-            <MovieGrid category="popular" />
+            <MovieGridEl category="popular" />
           </TabsContent>
 
           <TabsContent value="coming-soon">
-            <MovieGrid category="coming-soon" />
+            <MovieGridEl category="coming-soon" />
           </TabsContent>
 
           <TabsContent value="top-rated">
-            <MovieGrid category="top-rated" />
+            <MovieGridEl category="top-rated" />
           </TabsContent>
 
           <TabsContent value="most-reviewed">
-            <MovieGrid category="most-reviewed" />
+            <MovieGridEl category="most-reviewed" />
           </TabsContent>
         </Tabs>
       </section>
@@ -72,19 +79,19 @@ export default function Home() {
           </TabsList>
 
           <TabsContent value="popular">
-            <MovieGrid category="tv-popular" />
+            <MovieGridEl category="tv-popular" />
           </TabsContent>
 
           <TabsContent value="coming-soon">
-            <MovieGrid category="tv-coming-soon" />
+            <MovieGridEl category="tv-coming-soon" />
           </TabsContent>
 
           <TabsContent value="top-rated">
-            <MovieGrid category="tv-top-rated" />
+            <MovieGridEl category="tv-top-rated" />
           </TabsContent>
 
           <TabsContent value="most-reviewed">
-            <MovieGrid category="tv-most-reviewed" />
+            <MovieGridEl category="tv-most-reviewed" />
           </TabsContent>
         </Tabs>
       </section>
@@ -102,16 +109,16 @@ export default function Home() {
                 className="w-full h-auto"
               />
             </div>
-            <LatestNews />
+            <LatestNewsEl />
           </div>
           <div className="col-span-1">
-            <FeaturedCelebrities />
+            <FeaturedCelebritiesEl />
           </div>
         </div>
       </section>
 
       {/* Trailers Section */}
-      <TrailerSection />
+      <TrailerSectionEl />
     </div>
   )
 }

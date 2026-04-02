@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -17,7 +17,10 @@ export default function WatchlistPage() {
   const [items, setItems] = useState<MovieSummaryDto[]>([])
   const [loading, setLoading] = useState(true)
 
-  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
+  const headers = useMemo(
+    () => (accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined),
+    [accessToken],
+  )
 
   const load = useCallback(async () => {
     if (!accessToken) return

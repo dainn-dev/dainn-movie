@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -22,7 +22,10 @@ export default function FriendsPage() {
   const [hits, setHits] = useState<UserSearchResultDto[]>([])
   const [msg, setMsg] = useState<string | null>(null)
 
-  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
+  const headers = useMemo(
+    () => (accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined),
+    [accessToken],
+  )
 
   const load = useCallback(async () => {
     if (!accessToken) return

@@ -1,0 +1,51 @@
+# DAI-138 / M10-T9: lint + TypeScript + build on frontend changes
+
+name: Frontend CI
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  push:
+    branches: [master]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+
+  workflow_dispatch:
+
+jobs:
+  quality:
+    name: Lint, typecheck & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: ESLint
+        run: pnpm run lint
+
+      - name: TypeScript
+        run: pnpm run typecheck
+
+      - name: Build
+        env:
+          SKIP_NEXT_STANDALONE: "1"
+        run: pnpm run build

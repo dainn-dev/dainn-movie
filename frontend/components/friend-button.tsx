@@ -13,6 +13,7 @@ interface FriendButtonProps {
 }
 
 export function FriendButton({ userId, initialStatus = "none" }: FriendButtonProps) {
+  void userId
   const [status, setStatus] = useState<FriendStatus>(initialStatus)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -53,7 +54,7 @@ export function FriendButton({ userId, initialStatus = "none" }: FriendButtonPro
           })
           break
       }
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "There was a problem processing your request.",

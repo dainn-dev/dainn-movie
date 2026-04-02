@@ -156,7 +156,7 @@ function SearchPageContent() {
 
           {!loading && results && results.total === 0 && (
             <div className="text-center py-12 text-muted-foreground">
-              Không tìm thấy kết quả cho <strong>"{query}"</strong>
+              Không tìm thấy kết quả cho <strong>&ldquo;{query}&rdquo;</strong>
               <p className="text-sm mt-2">Thử tìm với từ khoá khác.</p>
             </div>
           )}

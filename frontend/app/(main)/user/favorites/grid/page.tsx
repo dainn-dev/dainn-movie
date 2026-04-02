@@ -129,7 +129,7 @@ export default function UserFavoritesGrid() {
       {/* Hero Banner */}
       <div className="bg-gray-900 text-white py-12">
         <div className="container mx-auto px-4">
-          <h1 className="text-3xl md:text-4xl font-bold mb-2">Edward kennedy's profile</h1>
+          <h1 className="text-3xl md:text-4xl font-bold mb-2">Edward kennedy&apos;s profile</h1>
           <div className="flex items-center text-sm">
             <Link href="/" className="hover:text-primary">
               Home

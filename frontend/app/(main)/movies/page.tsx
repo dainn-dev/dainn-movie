@@ -1,10 +1,8 @@
-import { Suspense } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { Star, SlidersHorizontal } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { GenreDto, MovieSummaryDto, PagedResult } from "@/types/api"
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? ""

@@ -5,7 +5,6 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import UserSidebar from "@/components/user-sidebar"
 import { useAuth } from "@/contexts/auth-context"
@@ -92,6 +91,8 @@ function MessagesInner() {
     loadMessages()
   }, [loadMessages])
 
+  const hasAccessToken = Boolean(accessToken)
+
   useEffect(() => {
     if (!user?.id || !API) return
     if (!accessToken) return
@@ -124,8 +125,9 @@ function MessagesInner() {
     return () => {
       void conn.stop()
     }
-    // Chỉ khởi tạo lại khi đổi user hoặc có/không token (đăng xuất); không phụ thuộc chuỗi JWT từng lần refresh.
-  }, [user?.id, !!accessToken, API])
+    // Chỉ khởi tạo lại khi đổi user hoặc có/không token (đăng xuất); không phụ thuộc chuỗi JWT từng lần refresh (dùng accessTokenRef).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- accessToken omitted: silent refresh không nên reconnect hub
+  }, [user?.id, hasAccessToken])
 
   async function send() {
     if (!accessToken || !peerId || !body.trim()) return
