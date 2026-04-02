@@ -8,17 +8,35 @@ const useStandalone =
   process.env.FORCE_NEXT_STANDALONE === '1' ||
   (platform() !== 'win32' && process.env.SKIP_NEXT_STANDALONE !== '1')
 
+/** Hostnames bổ sung cho poster/backdrop (CSV), ví dụ: pub-xxx.r2.dev,imagedelivery.net */
+function imageRemotePatterns() {
+  const fromEnv = (process.env.NEXT_PUBLIC_IMAGE_REMOTE_PATTERNS || '')
+    .split(',')
+    .map((h) => h.trim())
+    .filter(Boolean)
+    .map((hostname) => ({
+      protocol: 'https',
+      hostname,
+      port: '',
+      pathname: '/**',
+    }))
+  const defaults = [
+    { protocol: 'http', hostname: '127.0.0.1', port: '', pathname: '/**' },
+    { protocol: 'http', hostname: 'localhost', port: '', pathname: '/**' },
+    { protocol: 'https', hostname: 'placehold.co', port: '', pathname: '/**' },
+  ]
+  return [...defaults, ...fromEnv]
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   ...(useStandalone ? { output: 'standalone' } : {}),
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
+  experimental: {
+    optimizePackageImports: ['lucide-react'],
   },
   images: {
-    unoptimized: true,
+    unoptimized: false,
+    remotePatterns: imageRemotePatterns(),
   },
   async headers() {
     return [

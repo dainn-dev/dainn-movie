@@ -15,6 +15,8 @@ export interface MovieSummaryDto {
   genres: GenreDto[]
   status?: string | null
   createdAt?: string | null
+  /** Giá VND; null/0 = miễn phí (M8b) */
+  listingPriceVnd?: number | null
 }
 
 export interface CastMemberDto {
@@ -30,6 +32,15 @@ export interface VideoSourceInfoDto {
   id: string
   quality: string
   status: string
+  /** Số điểm phát thêm (CDN / URL dự phòng) trên BE */
+  extraStreamEndpointCount?: number
+}
+
+export interface StreamEndpointDto {
+  id: string
+  sortOrder: number
+  r2Key: string | null
+  directUrl: string | null
 }
 
 export interface ChapterSummaryDto {
@@ -38,6 +49,10 @@ export interface ChapterSummaryDto {
   order: number
   durationSeconds: number | null
   thumbnailUrl: string | null
+  /** Giây — kết thúc intro; có nút “Bỏ qua intro” khi có giá trị dương */
+  introSkipEndSeconds?: number | null
+  /** API M8a; thiếu field = không phụ đề */
+  hasSubtitles?: boolean
   videoSources: VideoSourceInfoDto[]
 }
 
@@ -52,6 +67,117 @@ export interface MovieDetailDto extends MovieSummaryDto {
   cast: CastMemberDto[]
   chapters: ChapterSummaryDto[]
   relatedMovies: MovieSummaryDto[]
+  /** M8b marketplace — có giá bán lẻ */
+  isPaidListing?: boolean
+  /** Đã đăng nhập + entitlement: được phát video */
+  viewerCanWatch?: boolean
+  /** Cần mua (hoặc đăng nhập nếu chưa login) */
+  purchaseRequired?: boolean
+}
+
+export interface CheckoutResponseDto {
+  purchaseId: string
+  status: string
+  amountVnd: number
+  platformFeeVnd: number
+  netToCreatorVnd: number
+  mockCheckoutEnabled: boolean
+  message: string | null
+}
+
+export interface PurchaseListItemDto {
+  id: string
+  movieId: string
+  movieTitle: string
+  moviePosterUrl: string | null
+  amountVnd: number
+  status: string
+  createdAt: string
+  completedAt: string | null
+}
+
+export interface PurchaseDetailDto {
+  id: string
+  movieId: string
+  movieTitle: string
+  moviePosterUrl: string | null
+  amountVnd: number
+  platformFeeVnd: number
+  netToCreatorVnd: number
+  status: string
+  provider: string
+  externalId: string | null
+  createdAt: string
+  completedAt: string | null
+  viewerRole: string
+}
+
+export interface CreatorSaleRowDto {
+  purchaseId: string
+  movieId: string
+  movieTitle: string
+  buyerUsername: string
+  amountVnd: number
+  platformFeeVnd: number
+  netToCreatorVnd: number
+  status: string
+  createdAt: string
+  completedAt: string | null
+}
+
+export interface CreatorSalesSummaryDto {
+  completedSalesCount: number
+  pendingPurchasesCount: number
+  totalGrossVnd: number
+  totalPlatformFeesVnd: number
+  totalNetToCreatorVnd: number
+}
+
+export interface CreatorSalesResponseDto {
+  summary: CreatorSalesSummaryDto
+  items: CreatorSaleRowDto[]
+}
+
+export interface AdminPurchaseRowDto {
+  id: string
+  userId: string
+  buyerUsername: string
+  movieId: string
+  movieTitle: string
+  amountVnd: number
+  platformFeeVnd: number
+  status: string
+  provider: string
+  createdAt: string
+  completedAt: string | null
+}
+
+export interface CreatorPayoutBalanceDto {
+  earnedNetVnd: number
+  paidOutVnd: number
+  pendingReserveVnd: number
+  availableVnd: number
+  minPayoutVnd: number
+}
+
+export interface PayoutRequestItemDto {
+  id: string
+  amountVnd: number
+  status: string
+  adminNote: string | null
+  createdAt: string
+  processedAt: string | null
+}
+
+export interface AdminPayoutRowDto {
+  id: string
+  userId: string
+  username: string
+  amountVnd: number
+  status: string
+  createdAt: string
+  processedAt: string | null
+  adminNote: string | null
 }
 
 export interface ReviewDto {
@@ -140,6 +266,31 @@ export interface VideoConfirmResponse {
   videoSourceId: string
 }
 
+/** M4b — cắt video trên server (FFmpeg) */
+export interface TrimChapterRequest {
+  startSeconds: number
+  endSeconds: number
+}
+
+/** M4b — poster từ frame video */
+export interface ChapterPosterFromVideoRequest {
+  timeSeconds: number
+}
+
+export interface SubtitlePresignRequest {
+  movieId: string
+  chapterId: string
+  filename: string
+  contentType: string
+}
+
+export interface SubtitleConfirmRequest {
+  movieId: string
+  chapterId: string
+  key: string
+  fileSizeBytes: number
+}
+
 export interface AddMovieCastRequest {
   celebrityId: string
   role: string
@@ -157,6 +308,7 @@ export interface CreateMovieRequest {
   runtimeMinutes: number | null
   mpaaRating: string | null
   genreIds: number[]
+  listingPriceVnd?: number | null
 }
 
 export interface UpdateMovieRequest {
@@ -170,6 +322,7 @@ export interface UpdateMovieRequest {
   mpaaRating?: string | null
   status?: string | null
   genreIds?: number[] | null
+  listingPriceVnd?: number | null
 }
 
 export interface CreateChapterRequest {
@@ -177,6 +330,8 @@ export interface CreateChapterRequest {
   order: number
   durationSeconds: number | null
   thumbnailUrl: string | null
+  introSkipEndSeconds?: number | null
+  subtitleR2Key?: string | null
 }
 
 export interface FriendUserDto {
@@ -215,6 +370,12 @@ export interface NotificationDto {
   isRead: boolean
   createdAt: string
   referenceId: string | null
+  /** Phim (deep link /watch/{referenceMovieId}/{referenceId}) cho type new_episode */
+  referenceMovieId: string | null
+}
+
+export interface WatchProgressDto {
+  progressSeconds: number
 }
 
 export interface WatchHistoryItemDto {

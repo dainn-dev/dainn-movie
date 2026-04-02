@@ -5,7 +5,7 @@ using MovieSocial.Api.Models.Entities;
 
 namespace MovieSocial.Api.Services;
 
-public class ChapterService(AppDbContext db, StreamUrlService streamUrls)
+public class ChapterService(AppDbContext db, StreamUrlService streamUrls, EntitlementService entitlements)
 {
     public async Task<List<ChapterSummaryDto>> ListForMovieAsync(Guid movieId, Guid? viewerId, string? viewerRole)
     {
@@ -22,9 +22,11 @@ public class ChapterService(AppDbContext db, StreamUrlService streamUrls)
             .OrderBy(c => c.Order)
             .Select(c => new ChapterSummaryDto(
                 c.Id, c.Title, c.Order, c.DurationSeconds, c.ThumbnailUrl,
+                c.IntroSkipEndSeconds,
+                c.SubtitleR2Key != null && c.SubtitleR2Key != "",
                 c.VideoSources
                     .OrderBy(v => v.Quality)
-                    .Select(v => new VideoSourceInfoDto(v.Id, v.Quality, v.Status))))
+                    .Select(v => new VideoSourceInfoDto(v.Id, v.Quality, v.Status, v.StreamEndpoints.Count))))
             .ToListAsync();
     }
 
@@ -33,18 +35,33 @@ public class ChapterService(AppDbContext db, StreamUrlService streamUrls)
         return await db.VideoSources.AsNoTracking()
             .Where(v => v.ChapterId == chapterId)
             .OrderBy(v => v.Quality)
-            .Select(v => new VideoSourceInfoDto(v.Id, v.Quality, v.Status))
+            .Select(v => new VideoSourceInfoDto(v.Id, v.Quality, v.Status, v.StreamEndpoints.Count))
             .ToListAsync();
     }
 
-    public async Task<string?> GetStreamUrlAsync(Guid chapterId, string? qualityParam)
+    public async Task<StreamUrlGate> GetStreamUrlGateAsync(
+        Guid chapterId, string? qualityParam, Guid? viewerId, string? viewerRole)
     {
         var chapter = await db.Chapters.AsNoTracking()
             .Include(c => c.Movie)
             .Include(c => c.VideoSources)
-            .FirstOrDefaultAsync(c => c.Id == chapterId && c.Movie.Status == "published");
+            .FirstOrDefaultAsync(c => c.Id == chapterId);
 
-        if (chapter is null) return null;
+        if (chapter is null) return new StreamUrlGate(null, 404, null);
+
+        var published = string.Equals(chapter.Movie.Status, "published", StringComparison.OrdinalIgnoreCase);
+        if (published)
+        {
+            if (!await entitlements.CanWatchPublishedStreamAsync(viewerId, viewerRole, chapter.Movie))
+            {
+                if (viewerId is null) return new StreamUrlGate(null, 401, chapter.MovieId);
+                return new StreamUrlGate(null, 403, chapter.MovieId);
+            }
+        }
+        else if (!CanManageUnpublishedMovie(chapter.Movie, viewerId, viewerRole))
+        {
+            return new StreamUrlGate(null, 404, null);
+        }
 
         var want = MapQuality(qualityParam);
         var ready = chapter.VideoSources.Where(v => v.Status == "ready").ToList();
@@ -55,8 +72,60 @@ public class ChapterService(AppDbContext db, StreamUrlService streamUrls)
                 string.Equals(v.Quality, qualityParam?.Trim(), StringComparison.OrdinalIgnoreCase))
             ?? ready.OrderBy(v => v.Quality).FirstOrDefault();
 
-        if (source is null) return null;
-        return streamUrls.GetStreamUrl(source.R2Key);
+        if (source is null) return new StreamUrlGate(null, 404, null);
+        var url = await ResolvePlaybackUrlAsync(source.Id, source.R2Key).ConfigureAwait(false);
+        return url is null ? new StreamUrlGate(null, 404, null) : new StreamUrlGate(url, 200, null);
+    }
+
+    /// <summary>Ưu tiên các <see cref="VideoSourceEndpoint"/> (SortOrder), sau đó R2Key gốc của VideoSource.</summary>
+    private async Task<string?> ResolvePlaybackUrlAsync(Guid videoSourceId, string primaryR2Key)
+    {
+        var endpoints = await db.VideoSourceEndpoints.AsNoTracking()
+            .Where(e => e.VideoSourceId == videoSourceId)
+            .OrderBy(e => e.SortOrder)
+            .ThenBy(e => e.CreatedAt)
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        foreach (var ep in endpoints)
+        {
+            if (!string.IsNullOrWhiteSpace(ep.DirectUrl))
+                return ep.DirectUrl.Trim();
+            if (!string.IsNullOrWhiteSpace(ep.R2Key))
+            {
+                var u = streamUrls.GetStreamUrl(ep.R2Key.Trim());
+                if (u is not null) return u;
+            }
+        }
+
+        return streamUrls.GetStreamUrl(primaryR2Key);
+    }
+
+    public async Task<StreamUrlGate> GetSubtitleUrlGateAsync(Guid chapterId, Guid? viewerId, string? viewerRole)
+    {
+        var chapter = await db.Chapters.AsNoTracking()
+            .Include(c => c.Movie)
+            .FirstOrDefaultAsync(c => c.Id == chapterId);
+
+        if (chapter is null) return new StreamUrlGate(null, 404, null);
+
+        var published = string.Equals(chapter.Movie.Status, "published", StringComparison.OrdinalIgnoreCase);
+        if (published)
+        {
+            if (!await entitlements.CanWatchPublishedStreamAsync(viewerId, viewerRole, chapter.Movie))
+            {
+                if (viewerId is null) return new StreamUrlGate(null, 401, chapter.MovieId);
+                return new StreamUrlGate(null, 403, chapter.MovieId);
+            }
+        }
+        else if (!CanManageUnpublishedMovie(chapter.Movie, viewerId, viewerRole))
+        {
+            return new StreamUrlGate(null, 404, null);
+        }
+
+        if (string.IsNullOrWhiteSpace(chapter.SubtitleR2Key)) return new StreamUrlGate(null, 404, null);
+        var url = streamUrls.GetStreamUrl(chapter.SubtitleR2Key);
+        return url is null ? new StreamUrlGate(null, 404, null) : new StreamUrlGate(url, 200, null);
     }
 
     public async Task<(ChapterCreatedDto? dto, string? error)> CreateAsync(
@@ -69,11 +138,13 @@ public class ChapterService(AppDbContext db, StreamUrlService streamUrls)
 
         var ch = new Chapter
         {
-            MovieId          = movieId,
-            Title            = req.Title,
-            Order            = req.Order,
-            DurationSeconds  = req.DurationSeconds,
-            ThumbnailUrl     = req.ThumbnailUrl,
+            MovieId               = movieId,
+            Title                 = req.Title,
+            Order                 = req.Order,
+            DurationSeconds       = req.DurationSeconds,
+            ThumbnailUrl          = req.ThumbnailUrl,
+            IntroSkipEndSeconds   = req.IntroSkipEndSeconds,
+            SubtitleR2Key         = string.IsNullOrWhiteSpace(req.SubtitleR2Key) ? null : req.SubtitleR2Key.Trim(),
         };
         db.Chapters.Add(ch);
         await db.SaveChangesAsync();
@@ -92,6 +163,9 @@ public class ChapterService(AppDbContext db, StreamUrlService streamUrls)
         if (req.Order is not null) ch.Order = req.Order.Value;
         if (req.DurationSeconds is not null) ch.DurationSeconds = req.DurationSeconds;
         if (req.ThumbnailUrl is not null) ch.ThumbnailUrl = req.ThumbnailUrl;
+        if (req.IntroSkipEndSeconds is not null) ch.IntroSkipEndSeconds = req.IntroSkipEndSeconds;
+        if (req.SubtitleR2Key is not null)
+            ch.SubtitleR2Key = string.IsNullOrWhiteSpace(req.SubtitleR2Key) ? null : req.SubtitleR2Key.Trim();
         ch.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
         return (new ChapterCreatedDto(ch.Id, ch.Title, ch.Order), null);
@@ -106,6 +180,12 @@ public class ChapterService(AppDbContext db, StreamUrlService streamUrls)
         db.Chapters.Remove(ch);
         await db.SaveChangesAsync();
         return null;
+    }
+
+    private static bool CanManageUnpublishedMovie(Movie movie, Guid? viewerId, string? viewerRole)
+    {
+        if (string.Equals(viewerRole, "admin", StringComparison.Ordinal)) return true;
+        return viewerId.HasValue && movie.UploadedById == viewerId.Value;
     }
 
     /// <summary>Map query ?quality=720p to stored labels (SD/HD/4K or raw).</summary>

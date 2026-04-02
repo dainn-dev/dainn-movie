@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using MovieSocial.Api.Data;
 using MovieSocial.Api.Models.DTOs;
@@ -18,10 +19,7 @@ public class CelebrityService(AppDbContext db)
         var query = db.Celebrities.AsNoTracking();
 
         if (!string.IsNullOrWhiteSpace(search))
-        {
-            var t = search.Trim().ToLower();
-            query = query.Where(c => c.Name.ToLower().Contains(t));
-        }
+            query = query.Where(c => EF.Functions.ILike(c.Name, SearchLikePattern(search)));
 
         if (!string.IsNullOrWhiteSpace(role))
             query = query.Where(c => c.MovieCast.Any(mc => mc.Role == role));
@@ -49,7 +47,6 @@ public class CelebrityService(AppDbContext db)
     {
         var c = await db.Celebrities.AsNoTracking()
             .Include(c => c.MovieCast).ThenInclude(mc => mc.Movie).ThenInclude(m => m.MovieGenres).ThenInclude(mg => mg.Genre)
-            .Include(c => c.MovieCast).ThenInclude(mc => mc.Movie).ThenInclude(m => m.Ratings)
             .FirstOrDefaultAsync(c => c.Slug == slug);
 
         if (c is null) return null;
@@ -59,10 +56,31 @@ public class CelebrityService(AppDbContext db)
             .OrderByDescending(mc => mc.Movie.CreatedAt)
             .Select(mc => new MovieSummaryDto(
                 mc.Movie.Id, mc.Movie.Title, mc.Movie.Slug, mc.Movie.PosterUrl, mc.Movie.ReleaseYear,
-                mc.Movie.Ratings.Any() ? Math.Round(mc.Movie.Ratings.Average(r => (double)r.Score), 1) : 0,
+                mc.Movie.RatingCountCached > 0 ? Math.Round(mc.Movie.AvgRatingCached, 1) : 0,
                 mc.Movie.ViewCount,
-                mc.Movie.MovieGenres.Select(mg => new GenreDto(mg.Genre.Id, mg.Genre.Name, mg.Genre.Slug))));
+                mc.Movie.MovieGenres.Select(mg => new GenreDto(mg.Genre.Id, mg.Genre.Name, mg.Genre.Slug)),
+                null,
+                null,
+                mc.Movie.ListingPriceVnd));
 
         return new CelebrityDetailDto(c.Id, c.Name, c.Slug, c.AvatarUrl, c.Bio, c.Country, c.DateOfBirth, movies);
+    }
+
+    private static string SearchLikePattern(string raw)
+    {
+        var t = raw.Trim();
+        if (t.Length == 0) return "%";
+        var sb = new StringBuilder(t.Length + 2);
+        sb.Append('%');
+        foreach (var c in t)
+        {
+            if (c is '%' or '_' or '\\')
+                sb.Append(' ');
+            else
+                sb.Append(c);
+        }
+
+        sb.Append('%');
+        return sb.ToString();
     }
 }

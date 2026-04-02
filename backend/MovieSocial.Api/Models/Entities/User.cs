@@ -18,6 +18,8 @@ public class User : BaseEntity
     public ICollection<Rating> Ratings { get; set; } = [];
     public ICollection<Favorite> Favorites { get; set; } = [];
     public ICollection<Watchlist> Watchlist { get; set; } = [];
+    public ICollection<MovieFollow> MovieFollows { get; set; } = [];
+    public ICollection<PushSubscription> PushSubscriptions { get; set; } = [];
     public ICollection<WatchHistory> WatchHistory { get; set; } = [];
     public ICollection<Notification> Notifications { get; set; } = [];
     public ICollection<News> NewsArticles { get; set; } = [];
@@ -27,4 +29,6 @@ public class User : BaseEntity
     public ICollection<FriendRequest> ReceivedFriendRequests { get; set; } = [];
     public ICollection<Friendship> Friendships { get; set; } = [];
     public ICollection<Friendship> FriendOf { get; set; } = [];
+    public ICollection<Purchase> Purchases { get; set; } = [];
+    public ICollection<PayoutRequest> PayoutRequests { get; set; } = [];
 }

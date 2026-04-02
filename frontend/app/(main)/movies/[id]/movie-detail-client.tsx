@@ -2,13 +2,14 @@
 
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BookmarkPlus, Heart, Play, Star } from "lucide-react"
+import { Bell, BookmarkPlus, Heart, Play, ShoppingBag, Star } from "lucide-react"
 import { WriteReviewDialog } from "@/components/write-review-dialog"
 import { useAuth } from "@/contexts/auth-context"
-import type { MovieDetailDto, PagedResult, ReviewDto } from "@/types/api"
+import type { CheckoutResponseDto, MovieDetailDto, PagedResult, ReviewDto } from "@/types/api"
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? ""
 
@@ -19,6 +20,11 @@ function formatRuntime(min: number | null): string {
   return h > 0 ? `${h}h${m}m` : `${m} phút`
 }
 
+function formatVnd(n: number | null | undefined) {
+  if (n == null || n <= 0) return null
+  return `${n.toLocaleString("vi-VN")}đ`
+}
+
 export default function MovieDetailClient({
   movie,
   initialReviews,
@@ -26,32 +32,60 @@ export default function MovieDetailClient({
   movie: MovieDetailDto
   initialReviews: PagedResult<ReviewDto>
 }) {
+  const router = useRouter()
   const { accessToken } = useAuth()
+  const [detail, setDetail] = useState(movie)
   const [fav, setFav] = useState(false)
   const [watchlist, setWatchlist] = useState(false)
+  const [following, setFollowing] = useState(false)
   const [reviews, setReviews] = useState<PagedResult<ReviewDto>>(initialReviews)
+  const [buying, setBuying] = useState(false)
 
-  const sortedChapters = [...movie.chapters].sort((a, b) => a.order - b.order)
+  useEffect(() => {
+    setDetail(movie)
+  }, [movie])
+
+  useEffect(() => {
+    let cancel = false
+    ;(async () => {
+      const headers: HeadersInit = accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+      const r = await fetch(`${API}/api/movies/${movie.id}`, { headers, cache: "no-store" })
+      if (!cancel && r.ok) setDetail((await r.json()) as MovieDetailDto)
+    })()
+    return () => {
+      cancel = true
+    }
+  }, [accessToken, movie.id])
+
+  const sortedChapters = [...detail.chapters].sort((a, b) => a.order - b.order)
   const firstChapterId = sortedChapters[0]?.id
+  const needsPurchase = detail.purchaseRequired === true
+  const priceLabel = formatVnd(detail.listingPriceVnd)
 
   const loadReviews = useCallback(async () => {
-    const r = await fetch(`${API}/api/movies/${movie.id}/reviews?page=1&pageSize=20`)
+    const r = await fetch(`${API}/api/movies/${detail.id}/reviews?page=1&pageSize=20`)
     if (r.ok) setReviews(await r.json())
-  }, [movie.id])
+  }, [detail.id])
 
   useEffect(() => {
     if (!accessToken) {
       setFav(false)
       setWatchlist(false)
+      setFollowing(false)
       return
     }
     ;(async () => {
-      const [rf, rw] = await Promise.all([
-        fetch(`${API}/api/movies/${movie.id}/favorite`, {
+      const [rf, rw, rfollow] = await Promise.all([
+        fetch(`${API}/api/movies/${detail.id}/favorite`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
-        movie.status === "published"
-          ? fetch(`${API}/api/social/watchlist/contains/${movie.id}`, {
+        detail.status === "published"
+          ? fetch(`${API}/api/social/watchlist/contains/${detail.id}`, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            })
+          : Promise.resolve(null as Response | null),
+        detail.status === "published"
+          ? fetch(`${API}/api/social/movies/${detail.id}/follow`, {
               headers: { Authorization: `Bearer ${accessToken}` },
             })
           : Promise.resolve(null as Response | null),
@@ -64,21 +98,84 @@ export default function MovieDetailClient({
         const d = (await rw.json()) as { onList: boolean }
         setWatchlist(d.onList)
       }
+      if (rfollow?.ok) {
+        const d = (await rfollow.json()) as { following: boolean }
+        setFollowing(d.following)
+      }
     })()
-  }, [accessToken, movie.id, movie.status])
+  }, [accessToken, detail.id, detail.status])
+
+  async function runCheckout() {
+    if (!accessToken) return
+    setBuying(true)
+    try {
+      const r = await fetch(`${API}/api/purchases/checkout`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ movieId: detail.id }),
+      })
+      const j = (await r.json().catch(() => ({}))) as CheckoutResponseDto & { message?: string }
+      if (!r.ok) {
+        alert((j as { message?: string }).message ?? "Không tạo được đơn.")
+        return
+      }
+      if (j.mockCheckoutEnabled) {
+        const c = await fetch(`${API}/api/purchases/${j.purchaseId}/mock-complete`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+        if (!c.ok) {
+          const err = await c.json().catch(() => ({}))
+          alert((err as { message?: string }).message ?? "Hoàn tất mock thất bại.")
+          return
+        }
+      } else {
+        alert(
+          "Đã tạo đơn chờ thanh toán.\nXem trạng thái tại /user/purchases — khi cổng thanh toán xác nhận (webhook), quyền xem sẽ được cập nhật."
+        )
+      }
+      const dRes = await fetch(`${API}/api/movies/${detail.id}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      })
+      if (dRes.ok) setDetail((await dRes.json()) as MovieDetailDto)
+      router.refresh()
+    } finally {
+      setBuying(false)
+    }
+  }
+
+  async function toggleFollowNewEpisodes() {
+    if (!accessToken) {
+      alert("Đăng nhập để theo dõi tập mới.")
+      return
+    }
+    if (detail.status !== "published") return
+    const h = { Authorization: `Bearer ${accessToken}` }
+    if (following) {
+      await fetch(`${API}/api/social/movies/${detail.id}/follow`, { method: "DELETE", headers: h })
+      setFollowing(false)
+    } else {
+      const r = await fetch(`${API}/api/social/movies/${detail.id}/follow`, { method: "POST", headers: h })
+      if (r.ok) setFollowing(true)
+    }
+  }
 
   async function toggleWatchlist() {
     if (!accessToken) {
       alert("Đăng nhập để dùng danh sách xem sau.")
       return
     }
-    if (movie.status !== "published") return
+    if (detail.status !== "published") return
     const h = { Authorization: `Bearer ${accessToken}` }
     if (watchlist) {
-      await fetch(`${API}/api/social/watchlist/${movie.id}`, { method: "DELETE", headers: h })
+      await fetch(`${API}/api/social/watchlist/${detail.id}`, { method: "DELETE", headers: h })
       setWatchlist(false)
     } else {
-      const r = await fetch(`${API}/api/social/watchlist/${movie.id}`, { method: "POST", headers: h })
+      const r = await fetch(`${API}/api/social/watchlist/${detail.id}`, { method: "POST", headers: h })
       if (r.ok) setWatchlist(true)
     }
   }
@@ -90,10 +187,10 @@ export default function MovieDetailClient({
     }
     const h = { Authorization: `Bearer ${accessToken}` }
     if (fav) {
-      await fetch(`${API}/api/movies/${movie.id}/favorite`, { method: "DELETE", headers: h })
+      await fetch(`${API}/api/movies/${detail.id}/favorite`, { method: "DELETE", headers: h })
       setFav(false)
     } else {
-      const r = await fetch(`${API}/api/movies/${movie.id}/favorite`, { method: "POST", headers: h })
+      const r = await fetch(`${API}/api/movies/${detail.id}/favorite`, { method: "POST", headers: h })
       if (r.ok) setFav(true)
     }
   }
@@ -103,8 +200,8 @@ export default function MovieDetailClient({
       <div
         className="h-48 md:h-64 w-full bg-muted relative bg-cover bg-center"
         style={
-          movie.backdropUrl
-            ? { backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,.5), var(--background)), url(${movie.backdropUrl})` }
+          detail.backdropUrl
+            ? { backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,.5), var(--background)), url(${detail.backdropUrl})` }
             : undefined
         }
       />
@@ -114,19 +211,44 @@ export default function MovieDetailClient({
           <div className="md:col-span-1">
             <div className="sticky top-24">
               <Image
-                src={movie.posterUrl || "/placeholder.svg"}
-                alt={movie.title}
+                src={detail.posterUrl || "/placeholder.svg"}
+                alt={detail.title}
                 width={320}
                 height={480}
                 className="rounded-lg shadow-lg w-full h-auto border border-border"
               />
               <div className="mt-4 flex flex-col gap-2">
+                {priceLabel ? (
+                  <p className="text-sm text-center rounded-md border border-border bg-muted/40 py-2 px-3">
+                    Giá: <span className="font-semibold text-foreground">{priceLabel}</span>
+                  </p>
+                ) : null}
                 {firstChapterId ? (
-                  <Button className="w-full" asChild>
-                    <Link href={`/watch/${movie.id}/${firstChapterId}`}>
-                      <Play className="mr-2 h-4 w-4" /> Xem ngay
-                    </Link>
-                  </Button>
+                  needsPurchase ? (
+                    !accessToken ? (
+                      <Button className="w-full" asChild>
+                        <Link href={`/login?redirect=${encodeURIComponent(`/movies/${detail.id}`)}`}>
+                          Đăng nhập để mua
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button
+                        className="w-full"
+                        type="button"
+                        onClick={() => void runCheckout()}
+                        disabled={buying}
+                      >
+                        <ShoppingBag className="mr-2 h-4 w-4" />
+                        {buying ? "Đang xử lý…" : "Mua & xem"}
+                      </Button>
+                    )
+                  ) : (
+                    <Button className="w-full" asChild>
+                      <Link href={`/watch/${detail.id}/${firstChapterId}`}>
+                        <Play className="mr-2 h-4 w-4" /> Xem ngay
+                      </Link>
+                    </Button>
+                  )
                 ) : (
                   <Button className="w-full" disabled variant="secondary">
                     Chưa có tập phát
@@ -136,16 +258,27 @@ export default function MovieDetailClient({
                   <Heart className={`mr-2 h-4 w-4 ${fav ? "fill-current" : ""}`} />
                   {fav ? "Đã thích" : "Yêu thích"}
                 </Button>
-                {movie.status === "published" && (
-                  <Button
-                    variant={watchlist ? "secondary" : "outline"}
-                    className="w-full"
-                    type="button"
-                    onClick={toggleWatchlist}
-                  >
-                    <BookmarkPlus className="mr-2 h-4 w-4" />
-                    {watchlist ? "Đã thêm xem sau" : "Xem sau (watchlist)"}
-                  </Button>
+                {detail.status === "published" && (
+                  <>
+                    <Button
+                      variant={following ? "secondary" : "outline"}
+                      className="w-full"
+                      type="button"
+                      onClick={() => void toggleFollowNewEpisodes()}
+                    >
+                      <Bell className={`mr-2 h-4 w-4 ${following ? "fill-current" : ""}`} />
+                      {following ? "Đang theo dõi tập mới" : "Theo dõi tập mới"}
+                    </Button>
+                    <Button
+                      variant={watchlist ? "secondary" : "outline"}
+                      className="w-full"
+                      type="button"
+                      onClick={toggleWatchlist}
+                    >
+                      <BookmarkPlus className="mr-2 h-4 w-4" />
+                      {watchlist ? "Đã thêm xem sau" : "Xem sau (watchlist)"}
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -154,14 +287,14 @@ export default function MovieDetailClient({
           <div className="md:col-span-2">
             <div className="bg-card rounded-lg border border-border shadow-sm p-6">
               <h1 className="text-3xl font-dosis font-bold mb-1">
-                {movie.title}{" "}
+                {detail.title}{" "}
                 <span className="text-muted-foreground font-normal">
-                  {movie.releaseYear ? `(${movie.releaseYear})` : ""}
+                  {detail.releaseYear ? `(${detail.releaseYear})` : ""}
                 </span>
               </h1>
 
               <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mb-4">
-                {movie.genres.map((g) => (
+                {detail.genres.map((g) => (
                   <Link key={g.slug} href={`/movies?genre=${g.slug}`} className="text-primary hover:underline">
                     {g.name}
                   </Link>
@@ -171,8 +304,8 @@ export default function MovieDetailClient({
               <div className="flex items-center gap-4 mb-6">
                 <div className="flex items-center gap-1 text-yellow-500">
                   <Star className="h-5 w-5 fill-current" />
-                  <span className="font-semibold text-foreground">{movie.avgRating || "—"}</span>
-                  <span className="text-muted-foreground text-sm">/10 · {movie.ratingCount} lượt</span>
+                  <span className="font-semibold text-foreground">{detail.avgRating || "—"}</span>
+                  <span className="text-muted-foreground text-sm">/10 · {detail.ratingCount} lượt</span>
                 </div>
               </div>
 
@@ -187,25 +320,36 @@ export default function MovieDetailClient({
 
                 <TabsContent value="overview" className="space-y-4">
                   <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                    {movie.description || "Chưa có mô tả."}
+                    {detail.description || "Chưa có mô tả."}
                   </p>
                   <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
                     <div>
                       <dt className="text-muted-foreground">Thời lượng</dt>
-                      <dd>{formatRuntime(movie.runtimeMinutes)}</dd>
+                      <dd>{formatRuntime(detail.runtimeMinutes)}</dd>
                     </div>
                     <div>
                       <dt className="text-muted-foreground">Phân loại</dt>
-                      <dd>{movie.mpaaRating ?? "—"}</dd>
+                      <dd>{detail.mpaaRating ?? "—"}</dd>
                     </div>
                     <div>
                       <dt className="text-muted-foreground">Lượt xem</dt>
-                      <dd>{movie.viewCount.toLocaleString("vi-VN")}</dd>
+                      <dd>{detail.viewCount.toLocaleString("vi-VN")}</dd>
                     </div>
+                    {priceLabel ? (
+                      <div>
+                        <dt className="text-muted-foreground">Giá xem</dt>
+                        <dd>{priceLabel}</dd>
+                      </div>
+                    ) : (
+                      <div>
+                        <dt className="text-muted-foreground">Giá xem</dt>
+                        <dd>Miễn phí</dd>
+                      </div>
+                    )}
                   </dl>
-                  {movie.trailerUrl && (
+                  {detail.trailerUrl && (
                     <a
-                      href={movie.trailerUrl}
+                      href={detail.trailerUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center text-primary text-sm hover:underline"
@@ -228,14 +372,23 @@ export default function MovieDetailClient({
                           <div>
                             <p className="font-medium">{c.title}</p>
                             <p className="text-xs text-muted-foreground">
-                              {c.videoSources.filter((v) => v.status === "ready").length} nguồn sẵn sàng
+                              {c.videoSources.filter((v) => v.status === "ready").length} chất lượng sẵn sàng
+                              {c.videoSources.some((v) => (v.extraStreamEndpointCount ?? 0) > 0)
+                                ? " · có mirror/CDN dự phòng"
+                                : ""}
                             </p>
                           </div>
-                          <Button size="sm" asChild>
-                            <Link href={`/watch/${movie.id}/${c.id}`}>
-                              <Play className="h-3 w-3 mr-1" /> Xem
-                            </Link>
-                          </Button>
+                          {needsPurchase ? (
+                            <Button size="sm" type="button" variant="secondary" disabled title="Mua phim để xem">
+                              Khóa
+                            </Button>
+                          ) : (
+                            <Button size="sm" asChild>
+                              <Link href={`/watch/${detail.id}/${c.id}`}>
+                                <Play className="h-3 w-3 mr-1" /> Xem
+                              </Link>
+                            </Button>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -248,8 +401,8 @@ export default function MovieDetailClient({
                       {reviews.pagination.total} đánh giá có nội dung
                     </p>
                     <WriteReviewDialog
-                      movieTitle={movie.title}
-                      movieId={movie.id}
+                      movieTitle={detail.title}
+                      movieId={detail.id}
                       onSubmitted={loadReviews}
                     />
                   </div>
@@ -290,7 +443,7 @@ export default function MovieDetailClient({
 
                 <TabsContent value="cast">
                   <ul className="space-y-3">
-                    {movie.cast.map((c) => (
+                    {detail.cast.map((c) => (
                       <li key={`${c.celebrityId}-${c.role}`} className="flex items-center gap-3">
                         <div className="relative h-12 w-12 rounded-full overflow-hidden bg-muted shrink-0">
                           {c.avatarUrl ? (
@@ -316,11 +469,11 @@ export default function MovieDetailClient({
                 </TabsContent>
 
                 <TabsContent value="related">
-                  {movie.relatedMovies.length === 0 ? (
+                  {detail.relatedMovies.length === 0 ? (
                     <p className="text-muted-foreground text-sm">Chưa có gợi ý.</p>
                   ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                      {movie.relatedMovies.map((m) => (
+                      {detail.relatedMovies.map((m) => (
                         <Link key={m.id} href={`/movies/${m.id}`} className="group block">
                           <div className="relative aspect-[2/3] rounded-md overflow-hidden bg-muted mb-2">
                             <Image

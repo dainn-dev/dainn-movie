@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Hosting;
 using MovieSocial.Api.Models.DTOs;
 using MovieSocial.Api.Services;
 
@@ -23,19 +24,21 @@ public static class AuthEndpoints
             if (!validation.IsValid)
                 return Results.ValidationProblem(validation.ToDictionary());
 
-            var (response, error) = await authService.RegisterAsync(req);
+            var (user, error) = await authService.RegisterAsync(req);
             if (error is not null)
                 return Results.Conflict(new { message = error });
 
-            return Results.Created("/api/auth/me", response);
+            return Results.Created("/api/auth/me", new { message = "Đăng ký thành công.", user });
         })
-        .WithSummary("Đăng ký tài khoản mới")
-        .Produces<AuthResponse>(201)
+        .WithSummary("Đăng ký tài khoản mới (chưa cấp phiên — đăng nhập sau)")
         .ProducesValidationProblem()
         .Produces(409);
 
         // POST /api/auth/login
         group.MapPost("/login", async (
+            HttpContext http,
+            IHostEnvironment env,
+            IConfiguration cfg,
             [FromBody] LoginRequest req,
             IValidator<LoginRequest> validator,
             AuthService authService) =>
@@ -48,25 +51,42 @@ public static class AuthEndpoints
             if (error is not null)
                 return Results.Unauthorized();
 
-            return Results.Ok(response);
+            var days = cfg.GetValue<int>("Jwt:RefreshTokenExpiryDays", 7);
+            AuthCookieHelper.SetRefreshCookie(http.Response, response!.RefreshToken, TimeSpan.FromDays(days), env);
+            return Results.Ok(new AuthTokenResponse(response.AccessToken, response.User));
         })
-        .WithSummary("Đăng nhập")
-        .Produces<AuthResponse>()
+        .WithSummary("Đăng nhập — refresh trong cookie httpOnly (M1a)")
+        .Produces<AuthTokenResponse>()
         .ProducesValidationProblem()
         .Produces(401);
 
         // POST /api/auth/logout  (requires auth)
         group.MapPost("/logout", async (
+            ClaimsPrincipal principal,
             [FromBody] RefreshRequest req,
             HttpContext ctx,
-            AuthService authService) =>
+            IHostEnvironment env,
+            AuthService authService,
+            PushNotificationService pushSvc) =>
         {
+            var userIdClaim = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                           ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdClaim is not null && Guid.TryParse(userIdClaim, out var pushUid))
+                await pushSvc.RemoveAllForUserAsync(pushUid);
+
             var authHeader  = ctx.Request.Headers.Authorization.ToString();
             var accessToken = authHeader.StartsWith("Bearer ")
                 ? authHeader["Bearer ".Length..]
                 : null;
 
-            await authService.LogoutAsync(req.RefreshToken, accessToken);
+            var refreshToken = string.IsNullOrWhiteSpace(req.RefreshToken)
+                ? ctx.Request.Cookies[AuthCookieHelper.CookieName]
+                : req.RefreshToken;
+
+            if (!string.IsNullOrWhiteSpace(refreshToken))
+                await authService.LogoutAsync(refreshToken, accessToken);
+
+            AuthCookieHelper.ClearRefreshCookie(ctx.Response, env);
             return Results.NoContent();
         })
         .WithSummary("Đăng xuất")
@@ -75,18 +95,34 @@ public static class AuthEndpoints
 
         // POST /api/auth/refresh
         group.MapPost("/refresh", async (
+            HttpContext http,
+            IHostEnvironment env,
+            IConfiguration cfg,
             [FromBody] RefreshRequest req,
             AuthService authService) =>
         {
-            var (response, error) = await authService.RefreshAsync(req.RefreshToken);
-            if (error is not null)
-                return Results.Unauthorized();
+            var refreshToken = string.IsNullOrWhiteSpace(req.RefreshToken)
+                ? http.Request.Cookies[AuthCookieHelper.CookieName]
+                : req.RefreshToken;
 
-            return Results.Ok(response);
+            if (string.IsNullOrWhiteSpace(refreshToken))
+                return Results.Json(
+                    new { message = "Thiếu refresh token.", code = "invalid_refresh" },
+                    statusCode: StatusCodes.Status401Unauthorized);
+
+            var (response, error, code) = await authService.RefreshAsync(refreshToken);
+            if (error is not null)
+                return Results.Json(
+                    new { message = error, code = code ?? "invalid_refresh" },
+                    statusCode: StatusCodes.Status401Unauthorized);
+
+            var days = cfg.GetValue<int>("Jwt:RefreshTokenExpiryDays", 7);
+            AuthCookieHelper.SetRefreshCookie(http.Response, response!.RefreshToken, TimeSpan.FromDays(days), env);
+            return Results.Ok(new AuthTokenResponse(response.AccessToken, response.User));
         })
-        .WithSummary("Làm mới access token")
-        .Produces<AuthResponse>()
-        .Produces(401);
+        .WithSummary("Làm mới access token — đọc cookie nếu body rỗng (M1a)")
+        .Produces<AuthTokenResponse>()
+        .Produces(statusCode: 401);
 
         // GET /api/auth/me  (requires auth)
         group.MapGet("/me", async (ClaimsPrincipal principal, AuthService authService) =>

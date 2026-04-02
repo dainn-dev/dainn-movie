@@ -44,6 +44,10 @@ function MessagesInner() {
     userIdRef.current = user?.id
   }, [user?.id])
 
+  /** Luôn trỏ JWT mới nhất — M1a / DAI-116: reconnect SignalR dùng token sau silent refresh, không cắt hub mỗi lần rotate. */
+  const accessTokenRef = useRef<string | null>(null)
+  accessTokenRef.current = accessToken
+
   const headers = useMemo(
     () =>
       accessToken
@@ -89,12 +93,19 @@ function MessagesInner() {
   }, [loadMessages])
 
   useEffect(() => {
-    if (!accessToken || !user?.id || !API) return
+    if (!user?.id || !API) return
+    if (!accessToken) return
 
     const base = API.replace(/\/$/, "")
     const conn = new signalR.HubConnectionBuilder()
-      .withUrl(`${base}/hubs/chat`, { accessTokenFactory: () => accessToken })
-      .withAutomaticReconnect()
+      .withUrl(`${base}/hubs/chat`, {
+        accessTokenFactory: () => {
+          const t = accessTokenRef.current
+          if (!t) return Promise.reject(new Error("missing_access_token"))
+          return Promise.resolve(t)
+        },
+      })
+      .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
       .build()
 
     conn.on("message", (raw: unknown) => {
@@ -113,7 +124,8 @@ function MessagesInner() {
     return () => {
       void conn.stop()
     }
-  }, [accessToken, user?.id])
+    // Chỉ khởi tạo lại khi đổi user hoặc có/không token (đăng xuất); không phụ thuộc chuỗi JWT từng lần refresh.
+  }, [user?.id, !!accessToken, API])
 
   async function send() {
     if (!accessToken || !peerId || !body.trim()) return
@@ -145,7 +157,7 @@ function MessagesInner() {
       <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="md:col-span-1">
-            <UserSidebar activeItem="profile" />
+            <UserSidebar activeItem="messages" />
           </div>
           <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="border rounded-lg p-3 h-[420px] overflow-y-auto bg-card">

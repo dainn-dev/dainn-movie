@@ -4,6 +4,8 @@ import type { MovieSummaryDto } from "@/types/api"
 const API = process.env.NEXT_PUBLIC_API_URL ?? ""
 
 export async function fetchMoviesForGridCategory(category: string): Promise<MovieSummaryDto[]> {
+  if (!API) return []
+
   const revalidate = { next: { revalidate: 60 } as const }
 
   const popular = async () => {

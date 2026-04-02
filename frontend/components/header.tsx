@@ -4,7 +4,22 @@ import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
-import { Search, Menu, LogOut, User as UserIcon, Film, Star, Upload, Users, MessageCircle } from "lucide-react"
+import {
+  Search,
+  Menu,
+  LogOut,
+  User as UserIcon,
+  Film,
+  Star,
+  Upload,
+  Users,
+  MessageCircle,
+  Bookmark,
+  History,
+  Bell,
+  ShoppingBag,
+  Wallet,
+} from "lucide-react"
 import { NotificationBell } from "@/components/notification-bell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -161,8 +176,33 @@ function UserMenu({ user, onLogout }: { user: { username: string; displayName: s
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
+          <Link href="/user/notifications" className="cursor-pointer">
+            <Bell className="mr-2 h-4 w-4" /> Thông báo
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/watchlist" className="cursor-pointer">
+            <Bookmark className="mr-2 h-4 w-4" /> Xem sau
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/user/watch-history" className="cursor-pointer">
+            <History className="mr-2 h-4 w-4" /> Lịch sử xem
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
           <Link href="/user/my-movies" className="cursor-pointer">
             <Film className="mr-2 h-4 w-4" /> Phim của tôi
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/user/purchases" className="cursor-pointer">
+            <ShoppingBag className="mr-2 h-4 w-4" /> Đơn mua
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/user/sales" className="cursor-pointer">
+            <Wallet className="mr-2 h-4 w-4" /> Doanh thu bán
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
@@ -194,7 +234,12 @@ function MobileAuthSection({
         <Link href="/upload" className="text-sm text-muted-foreground">Đăng phim</Link>
         <Link href="/user/friends" className="text-sm text-muted-foreground">Bạn bè</Link>
         <Link href="/user/messages" className="text-sm text-muted-foreground">Tin nhắn</Link>
+        <Link href="/user/notifications" className="text-sm text-muted-foreground">Thông báo</Link>
+        <Link href="/watchlist" className="text-sm text-muted-foreground">Xem sau</Link>
+        <Link href="/user/watch-history" className="text-sm text-muted-foreground">Lịch sử xem</Link>
         <Link href="/user/my-movies" className="text-sm text-muted-foreground">Phim của tôi</Link>
+        <Link href="/user/purchases" className="text-sm text-muted-foreground">Đơn mua</Link>
+        <Link href="/user/sales" className="text-sm text-muted-foreground">Doanh thu bán</Link>
         <button onClick={onLogout} className="text-sm text-destructive text-left">Đăng xuất</button>
       </div>
     )
@@ -220,7 +265,12 @@ function NavLinks({ mobile = false }: { mobile?: boolean }) {
         { name: "Upload", href: "/upload" },
         { name: "Friends", href: "/user/friends" },
         { name: "Messages", href: "/user/messages" },
+        { name: "Notifications", href: "/user/notifications" },
+        { name: "Watchlist", href: "/watchlist" },
+        { name: "Watch history", href: "/user/watch-history" },
         { name: "My Movies", href: "/user/my-movies" },
+        { name: "Purchases", href: "/user/purchases" },
+        { name: "Creator sales", href: "/user/sales" },
         { name: "Rated", href: "/user/rated" },
       ],
     },

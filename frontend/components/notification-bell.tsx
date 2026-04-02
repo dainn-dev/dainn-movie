@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useState } from "react"
 import { Bell } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -15,7 +16,14 @@ import type { NotificationDto } from "@/types/api"
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? ""
 
+function newEpisodeWatchPath(n: NotificationDto): string | null {
+  if (n.type !== "new_episode") return null
+  if (!n.referenceMovieId || !n.referenceId) return null
+  return `/watch/${n.referenceMovieId}/${n.referenceId}`
+}
+
 export function NotificationBell() {
+  const router = useRouter()
   const { accessToken } = useAuth()
   const [count, setCount] = useState(0)
   const [items, setItems] = useState<NotificationDto[]>([])
@@ -74,13 +82,35 @@ export function NotificationBell() {
             <DropdownMenuItem
               key={n.id}
               className="flex flex-col items-start gap-0.5 whitespace-normal cursor-pointer"
-              onClick={() => markRead(n.id)}
+              onClick={() => {
+                void markRead(n.id)
+                const path = newEpisodeWatchPath(n)
+                if (path) router.push(path)
+              }}
             >
               <span className="font-medium text-sm">{n.title}</span>
               <span className="text-xs text-muted-foreground line-clamp-2">{n.body}</span>
             </DropdownMenuItem>
           ))
         )}
+        <DropdownMenuItem
+          className="cursor-pointer"
+          onClick={async () => {
+            if (!accessToken) return
+            await fetch(`${API}/api/social/notifications/read-all`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${accessToken}` },
+            })
+            load()
+          }}
+        >
+          Đánh dấu đọc hết
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/user/notifications" className="cursor-pointer w-full">
+            Tất cả thông báo
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href="/user/friends" className="cursor-pointer w-full">
             Bạn bè &amp; tin nhắn

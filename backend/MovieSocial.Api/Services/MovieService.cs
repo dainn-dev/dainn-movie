@@ -5,7 +5,7 @@ using MovieSocial.Api.Models.Entities;
 
 namespace MovieSocial.Api.Services;
 
-public class MovieService(AppDbContext db)
+public class MovieService(AppDbContext db, EntitlementService entitlements, CatalogReadCache catalogCache)
 {
     // ── List ──────────────────────────────────────────────────────────────────
     public async Task<PagedResult<MovieSummaryDto>> ListAsync(
@@ -24,8 +24,8 @@ public class MovieService(AppDbContext db)
         q = sort switch
         {
             "popular" => q.OrderByDescending(m => m.ViewCount),
-            "rating"  => q.OrderByDescending(m => m.Ratings.Average(r => (double?)r.Score) ?? 0),
-            "reviews" => q.OrderByDescending(m => m.Reviews.Count),
+            "rating"  => q.OrderByDescending(m => m.AvgRatingCached),
+            "reviews" => q.OrderByDescending(m => m.ReviewCountCached),
             "title"   => q.OrderBy(m => m.Title),
             _         => q.OrderByDescending(m => m.CreatedAt),
         };
@@ -36,11 +36,12 @@ public class MovieService(AppDbContext db)
             .Take(pageSize)
             .Select(m => new MovieSummaryDto(
                 m.Id, m.Title, m.Slug, m.PosterUrl, m.ReleaseYear,
-                m.Ratings.Any() ? Math.Round(m.Ratings.Average(r => (double)r.Score), 1) : 0,
+                m.RatingCountCached > 0 ? Math.Round(m.AvgRatingCached, 1) : 0,
                 m.ViewCount,
                 m.MovieGenres.Select(mg => new GenreDto(mg.Genre.Id, mg.Genre.Name, mg.Genre.Slug)),
                 null,
-                null))
+                null,
+                m.ListingPriceVnd))
             .ToListAsync();
 
         return new PagedResult<MovieSummaryDto>(items, new PaginationMeta(page, pageSize, total, (int)Math.Ceiling((double)total / pageSize)));
@@ -62,11 +63,12 @@ public class MovieService(AppDbContext db)
             .Take(pageSize)
             .Select(m => new MovieSummaryDto(
                 m.Id, m.Title, m.Slug, m.PosterUrl, m.ReleaseYear,
-                m.Ratings.Any() ? Math.Round(m.Ratings.Average(r => (double)r.Score), 1) : 0,
+                m.RatingCountCached > 0 ? Math.Round(m.AvgRatingCached, 1) : 0,
                 m.ViewCount,
                 m.MovieGenres.Select(mg => new GenreDto(mg.Genre.Id, mg.Genre.Name, mg.Genre.Slug)),
                 m.Status,
-                m.CreatedAt))
+                m.CreatedAt,
+                m.ListingPriceVnd))
             .ToListAsync();
 
         return new PagedResult<MovieSummaryDto>(items, new PaginationMeta(page, pageSize, total, (int)Math.Ceiling((double)total / pageSize)));
@@ -81,7 +83,6 @@ public class MovieService(AppDbContext db)
             .AsNoTracking()
             .Include(m => m.MovieGenres).ThenInclude(mg => mg.Genre)
             .Include(m => m.Cast).ThenInclude(mc => mc.Celebrity)
-            .Include(m => m.Ratings)
             .Include(m => m.Chapters).ThenInclude(c => c.VideoSources)
             .FirstOrDefaultAsync(m => m.Id == id);
 
@@ -95,22 +96,23 @@ public class MovieService(AppDbContext db)
         var related = m.Status == "published"
             ? await GetRelatedSummariesAsync(m.Id, 8)
             : [];
-        return MapDetail(m, related);
+        var endpointCounts = await LoadStreamEndpointCountsAsync(m);
+        return await BuildDetailDtoAsync(m, related, viewerId, viewerRole, endpointCounts);
     }
 
-    public async Task<MovieDetailDto?> GetDetailBySlugAsync(string slug)
+    public async Task<MovieDetailDto?> GetDetailBySlugAsync(string slug, Guid? viewerId, string? viewerRole)
     {
         var m = await db.Movies
             .AsNoTracking()
             .Include(m => m.MovieGenres).ThenInclude(mg => mg.Genre)
             .Include(m => m.Cast).ThenInclude(mc => mc.Celebrity)
-            .Include(m => m.Ratings)
             .Include(m => m.Chapters).ThenInclude(c => c.VideoSources)
             .FirstOrDefaultAsync(m => m.Slug == slug && m.Status == "published");
 
         if (m is null) return null;
         var related = await GetRelatedSummariesAsync(m.Id, 8);
-        return MapDetail(m, related);
+        var endpointCounts = await LoadStreamEndpointCountsAsync(m);
+        return await BuildDetailDtoAsync(m, related, viewerId, viewerRole, endpointCounts);
     }
 
     public async Task<List<MovieSummaryDto>> GetRelatedSummariesAsync(Guid movieId, int limit = 8)
@@ -133,11 +135,12 @@ public class MovieService(AppDbContext db)
             .Take(limit)
             .Select(m => new MovieSummaryDto(
                 m.Id, m.Title, m.Slug, m.PosterUrl, m.ReleaseYear,
-                m.Ratings.Any() ? Math.Round(m.Ratings.Average(r => (double)r.Score), 1) : 0,
+                m.RatingCountCached > 0 ? Math.Round(m.AvgRatingCached, 1) : 0,
                 m.ViewCount,
                 m.MovieGenres.Select(mg => new GenreDto(mg.Genre.Id, mg.Genre.Name, mg.Genre.Slug)),
                 null,
-                null))
+                null,
+                m.ListingPriceVnd))
             .ToListAsync();
     }
 
@@ -164,23 +167,50 @@ public class MovieService(AppDbContext db)
     public Task<bool> IsFavoriteAsync(Guid movieId, Guid userId) =>
         db.Favorites.AsNoTracking().AnyAsync(f => f.UserId == userId && f.MovieId == movieId);
 
-    // ── Featured / Popular / Latest ───────────────────────────────────────────
-    public Task<List<MovieSummaryDto>> GetFeaturedAsync(int limit = 6) =>
-        QuerySummaries(db.Movies.Where(m => m.Status == "published")
-            .OrderByDescending(m => m.ViewCount), limit);
+    // ── Featured / Popular / Latest (Redis catalog cache, TTL trong CatalogCache) ──
+    public async Task<List<MovieSummaryDto>> GetFeaturedAsync(int limit = 6)
+    {
+        var n = limit < 1 ? 6 : limit;
+        var key = $"moviesocial:catalog:featured:v1:{n}";
+        var cached = await catalogCache.GetAsync<List<MovieSummaryDto>>(key).ConfigureAwait(false);
+        if (cached is not null) return cached;
+        var list = await QuerySummaries(db.Movies.Where(m => m.Status == "published")
+            .OrderByDescending(m => m.ViewCount), n).ConfigureAwait(false);
+        await catalogCache.SetAsync(key, list).ConfigureAwait(false);
+        return list;
+    }
 
-    public Task<List<MovieSummaryDto>> GetPopularAsync(int limit = 20) =>
-        QuerySummaries(db.Movies.Where(m => m.Status == "published")
-            .OrderByDescending(m => m.ViewCount), limit);
+    public async Task<List<MovieSummaryDto>> GetPopularAsync(int limit = 20)
+    {
+        var n = limit < 1 ? 20 : limit;
+        var key = $"moviesocial:catalog:popular:v1:{n}";
+        var cached = await catalogCache.GetAsync<List<MovieSummaryDto>>(key).ConfigureAwait(false);
+        if (cached is not null) return cached;
+        var list = await QuerySummaries(db.Movies.Where(m => m.Status == "published")
+            .OrderByDescending(m => m.ViewCount), n).ConfigureAwait(false);
+        await catalogCache.SetAsync(key, list).ConfigureAwait(false);
+        return list;
+    }
 
-    public Task<List<MovieSummaryDto>> GetLatestAsync(int limit = 20) =>
-        QuerySummaries(db.Movies.Where(m => m.Status == "published")
-            .OrderByDescending(m => m.CreatedAt), limit);
+    public async Task<List<MovieSummaryDto>> GetLatestAsync(int limit = 20)
+    {
+        var n = limit < 1 ? 20 : limit;
+        var key = $"moviesocial:catalog:latest:v1:{n}";
+        var cached = await catalogCache.GetAsync<List<MovieSummaryDto>>(key).ConfigureAwait(false);
+        if (cached is not null) return cached;
+        var list = await QuerySummaries(db.Movies.Where(m => m.Status == "published")
+            .OrderByDescending(m => m.CreatedAt), n).ConfigureAwait(false);
+        await catalogCache.SetAsync(key, list).ConfigureAwait(false);
+        return list;
+    }
 
     public async Task<List<MovieTrailerDto>> GetTrailersAsync(int limit = 6)
     {
         var n = limit < 1 ? 6 : limit;
-        return await db.Movies.AsNoTracking()
+        var key = $"moviesocial:catalog:trailers:v1:{n}";
+        var cached = await catalogCache.GetAsync<List<MovieTrailerDto>>(key).ConfigureAwait(false);
+        if (cached is not null) return cached;
+        var list = await db.Movies.AsNoTracking()
             .Where(m => m.Status == "published"
                 && m.TrailerUrl != null && m.TrailerUrl != "")
             .OrderByDescending(m => m.ViewCount)
@@ -188,6 +218,8 @@ public class MovieService(AppDbContext db)
             .Select(m => new MovieTrailerDto(
                 m.Id, m.Title, m.Slug, m.PosterUrl, m.TrailerUrl!))
             .ToListAsync();
+        await catalogCache.SetAsync(key, list).ConfigureAwait(false);
+        return list;
     }
 
     // ── Create ────────────────────────────────────────────────────────────────
@@ -205,8 +237,9 @@ public class MovieService(AppDbContext db)
             ReleaseYear    = req.ReleaseYear,
             RuntimeMinutes = req.RuntimeMinutes,
             MpaaRating     = req.MpaaRating,
-            Status         = "draft",
-            UploadedById   = uploaderId,
+            Status            = "draft",
+            UploadedById      = uploaderId,
+            ListingPriceVnd   = NormalizeListingPrice(req.ListingPriceVnd),
         };
 
         db.Movies.Add(movie);
@@ -218,7 +251,9 @@ public class MovieService(AppDbContext db)
             await db.SaveChangesAsync();
         }
 
-        return new MovieSummaryDto(movie.Id, movie.Title, movie.Slug, movie.PosterUrl, movie.ReleaseYear, 0, 0, []);
+        return new MovieSummaryDto(
+            movie.Id, movie.Title, movie.Slug, movie.PosterUrl, movie.ReleaseYear, 0, 0, [],
+            null, null, movie.ListingPriceVnd);
     }
 
     // ── Update ────────────────────────────────────────────────────────────────
@@ -237,6 +272,7 @@ public class MovieService(AppDbContext db)
         if (req.RuntimeMinutes is not null) movie.RuntimeMinutes = req.RuntimeMinutes;
         if (req.MpaaRating   is not null) movie.MpaaRating     = req.MpaaRating;
         if (req.Status       is not null) movie.Status         = req.Status;
+        if (req.ListingPriceVnd is not null) movie.ListingPriceVnd = NormalizeListingPrice(req.ListingPriceVnd);
         movie.UpdatedAt = DateTime.UtcNow;
 
         if (req.GenreIds is not null)
@@ -246,7 +282,9 @@ public class MovieService(AppDbContext db)
         }
 
         await db.SaveChangesAsync();
-        return (new MovieSummaryDto(movie.Id, movie.Title, movie.Slug, movie.PosterUrl, movie.ReleaseYear, 0, movie.ViewCount, []), null);
+        return (new MovieSummaryDto(
+            movie.Id, movie.Title, movie.Slug, movie.PosterUrl, movie.ReleaseYear, 0, movie.ViewCount, [],
+            movie.Status, null, movie.ListingPriceVnd), null);
     }
 
     public async Task<string?> AddCastAsync(Guid movieId, AddMovieCastRequest req, Guid userId, string requesterRole)
@@ -303,39 +341,82 @@ public class MovieService(AppDbContext db)
     }
 
     // ── Genres list ───────────────────────────────────────────────────────────
-    public async Task<List<GenreDto>> GetGenresAsync() =>
-        await db.Genres.AsNoTracking()
+    public async Task<List<GenreDto>> GetGenresAsync()
+    {
+        const string key = "moviesocial:catalog:genres:v1";
+        var cached = await catalogCache.GetAsync<List<GenreDto>>(key).ConfigureAwait(false);
+        if (cached is not null) return cached;
+        var list = await db.Genres.AsNoTracking()
             .OrderBy(g => g.Name)
             .Select(g => new GenreDto(g.Id, g.Name, g.Slug))
             .ToListAsync();
+        await catalogCache.SetAsync(key, list).ConfigureAwait(false);
+        return list;
+    }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     private static Task<List<MovieSummaryDto>> QuerySummaries(IQueryable<Movie> q, int limit) =>
-        q.Take(limit)
+        q.AsNoTracking().Take(limit)
          .Select(m => new MovieSummaryDto(
              m.Id, m.Title, m.Slug, m.PosterUrl, m.ReleaseYear,
-             m.Ratings.Any() ? Math.Round(m.Ratings.Average(r => (double)r.Score), 1) : 0,
+             m.RatingCountCached > 0 ? Math.Round(m.AvgRatingCached, 1) : 0,
              m.ViewCount,
              m.MovieGenres.Select(mg => new GenreDto(mg.Genre.Id, mg.Genre.Name, mg.Genre.Slug)),
              null,
-             null))
+             null,
+             m.ListingPriceVnd))
          .ToListAsync();
 
-    private static MovieDetailDto MapDetail(Movie m, IEnumerable<MovieSummaryDto> related) => new(
-        m.Id, m.Title, m.Slug, m.Description, m.PosterUrl, m.BackdropUrl, m.TrailerUrl,
-        m.ReleaseYear, m.RuntimeMinutes, m.MpaaRating, m.Status, m.ViewCount,
-        m.Ratings.Any() ? Math.Round(m.Ratings.Average(r => (double)r.Score), 1) : 0,
-        m.Ratings.Count,
-        m.MovieGenres.Select(mg => new GenreDto(mg.Genre.Id, mg.Genre.Name, mg.Genre.Slug)),
-        m.Cast.OrderBy(mc => mc.Order).Select(mc => new CastMemberDto(
-            mc.CelebrityId, mc.Celebrity.Slug, mc.Celebrity.Name, mc.Celebrity.AvatarUrl, mc.Role, mc.CharacterName)),
-        m.Chapters
-            .OrderBy(c => c.Order)
-            .Select(c => new ChapterSummaryDto(
-                c.Id, c.Title, c.Order, c.DurationSeconds, c.ThumbnailUrl,
-                c.VideoSources.OrderBy(v => v.Quality)
-                    .Select(v => new VideoSourceInfoDto(v.Id, v.Quality, v.Status)))),
-        related);
+    private async Task<Dictionary<Guid, int>> LoadStreamEndpointCountsAsync(Movie m)
+    {
+        var vsIds = m.Chapters.SelectMany(c => c.VideoSources).Select(v => v.Id).ToList();
+        if (vsIds.Count == 0) return [];
+        return await db.VideoSourceEndpoints.AsNoTracking()
+            .Where(e => vsIds.Contains(e.VideoSourceId))
+            .GroupBy(e => e.VideoSourceId)
+            .Select(g => new { g.Key, Cnt = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Cnt);
+    }
+
+    private async Task<MovieDetailDto> BuildDetailDtoAsync(
+        Movie m,
+        IEnumerable<MovieSummaryDto> related,
+        Guid? viewerId,
+        string? viewerRole,
+        IReadOnlyDictionary<Guid, int> streamEndpointCounts)
+    {
+        var canPlay = await entitlements.ViewerCanPlayAsync(m, viewerId, viewerRole);
+        var isPaid = EntitlementService.IsPaidListing(m);
+        var purchaseRequired = isPaid && !canPlay;
+        return new MovieDetailDto(
+            m.Id, m.Title, m.Slug, m.Description, m.PosterUrl, m.BackdropUrl, m.TrailerUrl,
+            m.ReleaseYear, m.RuntimeMinutes, m.MpaaRating, m.Status, m.ViewCount,
+            m.RatingCountCached > 0 ? Math.Round(m.AvgRatingCached, 1) : 0,
+            m.RatingCountCached,
+            m.MovieGenres.Select(mg => new GenreDto(mg.Genre.Id, mg.Genre.Name, mg.Genre.Slug)),
+            m.Cast.OrderBy(mc => mc.Order).Select(mc => new CastMemberDto(
+                mc.CelebrityId, mc.Celebrity.Slug, mc.Celebrity.Name, mc.Celebrity.AvatarUrl, mc.Role, mc.CharacterName)),
+            m.Chapters
+                .OrderBy(c => c.Order)
+                .Select(c => new ChapterSummaryDto(
+                    c.Id, c.Title, c.Order, c.DurationSeconds, c.ThumbnailUrl,
+                    c.IntroSkipEndSeconds,
+                    c.SubtitleR2Key != null && c.SubtitleR2Key != "",
+                    c.VideoSources.OrderBy(v => v.Quality)
+                        .Select(v => new VideoSourceInfoDto(
+                            v.Id, v.Quality, v.Status, streamEndpointCounts.GetValueOrDefault(v.Id))))),
+            related,
+            m.ListingPriceVnd,
+            isPaid,
+            canPlay,
+            purchaseRequired);
+    }
+
+    private static int? NormalizeListingPrice(int? v)
+    {
+        if (!v.HasValue) return null;
+        return v.Value <= 0 ? null : v.Value;
+    }
 
     private static string GenerateSlug(string title) =>
         System.Text.RegularExpressions.Regex.Replace(title.ToLowerInvariant().Trim(), @"[^a-z0-9]+", "-").Trim('-')

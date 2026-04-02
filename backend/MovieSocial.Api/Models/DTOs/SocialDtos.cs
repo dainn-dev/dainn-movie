@@ -32,7 +32,8 @@ public record NotificationDto(
     string Body,
     bool IsRead,
     DateTime CreatedAt,
-    Guid? ReferenceId);
+    Guid? ReferenceId,
+    Guid? ReferenceMovieId);
 
 public record WatchHistoryItemDto(
     Guid Id,
@@ -45,6 +46,9 @@ public record WatchHistoryItemDto(
     DateTime WatchedAt);
 
 public record RecordWatchHistoryRequest(Guid MovieId, Guid ChapterId, int ProgressSeconds);
+
+/// <summary>Tiến độ xem gần nhất cho một tập (0 nếu chưa có).</summary>
+public record WatchProgressDto(int ProgressSeconds);
 
 public record SubmitReportRequest(string TargetType, Guid TargetId, string Reason);
 

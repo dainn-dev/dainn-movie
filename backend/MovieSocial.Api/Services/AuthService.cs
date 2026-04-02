@@ -8,7 +8,7 @@ namespace MovieSocial.Api.Services;
 public class AuthService(AppDbContext db, TokenService tokens)
 {
     // ── Register ─────────────────────────────────────────────────────────────
-    public async Task<(AuthResponse? response, string? error)> RegisterAsync(RegisterRequest req)
+    public async Task<(UserDto? user, string? error)> RegisterAsync(RegisterRequest req)
     {
         if (await db.Users.AnyAsync(u => u.Username == req.Username))
             return (null, "Username đã được sử dụng.");
@@ -29,7 +29,7 @@ public class AuthService(AppDbContext db, TokenService tokens)
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        return (await BuildAuthResponseAsync(user), null);
+        return (MapUserDto(user), null);
     }
 
     // ── Login ────────────────────────────────────────────────────────────────
@@ -71,19 +71,23 @@ public class AuthService(AppDbContext db, TokenService tokens)
     }
 
     // ── Refresh ──────────────────────────────────────────────────────────────
-    public async Task<(AuthResponse? response, string? error)> RefreshAsync(string refreshToken)
+    public async Task<(AuthResponse? response, string? error, string? errorCode)> RefreshAsync(string refreshToken)
     {
-        var userId = await tokens.ValidateRefreshTokenAsync(refreshToken);
-        if (userId is null)
-            return (null, "Refresh token không hợp lệ hoặc đã hết hạn.");
+        var v = await tokens.ValidateRefreshTokenAsync(refreshToken);
+        if (!v.Ok)
+        {
+            var msg = v.ErrorCode == "session_revoked"
+                ? "Phiên đã kết thúc — tài khoản đăng nhập nơi khác."
+                : "Refresh token không hợp lệ hoặc đã hết hạn.";
+            return (null, msg, v.ErrorCode);
+        }
 
-        var user = await db.Users.FindAsync(userId.Value);
+        var user = await db.Users.FindAsync(v.UserId!.Value);
         if (user is null || !user.IsActive)
-            return (null, "Tài khoản không tồn tại hoặc đã bị khóa.");
+            return (null, "Tài khoản không tồn tại hoặc đã bị khóa.", "invalid_refresh");
 
-        // Rotate: revoke old, issue new
         await tokens.RevokeRefreshTokenAsync(refreshToken);
-        return (await BuildAuthResponseAsync(user), null);
+        return (await BuildAuthResponseAsync(user), null, null);
     }
 
     // ── Me ───────────────────────────────────────────────────────────────────

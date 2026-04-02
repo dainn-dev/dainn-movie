@@ -7,6 +7,17 @@ namespace MovieSocial.Api.Services;
 
 public class ReviewRatingService(AppDbContext db)
 {
+    private static Task RefreshMovieAggregateCachesAsync(AppDbContext ctx, Guid movieId, CancellationToken ct = default) =>
+        ctx.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE "Movies" SET
+               "RatingCountCached" = (SELECT COUNT(*)::int FROM "Ratings" WHERE "MovieId" = {movieId}),
+               "AvgRatingCached" = COALESCE((SELECT AVG("Score")::float8 FROM "Ratings" WHERE "MovieId" = {movieId}), 0),
+               "ReviewCountCached" = (SELECT COUNT(*)::int FROM "Reviews" WHERE "MovieId" = {movieId})
+             WHERE "Id" = {movieId}
+             """,
+            cancellationToken: ct);
+
     public async Task<PagedResult<ReviewDto>> ListReviewsAsync(Guid movieId, int page, int pageSize)
     {
         page = page < 1 ? 1 : page;
@@ -61,6 +72,7 @@ public class ReviewRatingService(AppDbContext db)
             };
             db.Reviews.Add(r);
             await db.SaveChangesAsync();
+            await RefreshMovieAggregateCachesAsync(db, movieId);
             var dto = await ProjectReviewAsync(r.Id);
             return (dto, null, 201);
         }
@@ -70,6 +82,7 @@ public class ReviewRatingService(AppDbContext db)
         existing.Score     = req.Score;
         existing.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
+        await RefreshMovieAggregateCachesAsync(db, movieId);
         return (await ProjectReviewAsync(existing.Id), null, 200);
     }
 
@@ -90,6 +103,7 @@ public class ReviewRatingService(AppDbContext db)
 
         r.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
+        await RefreshMovieAggregateCachesAsync(db, r.MovieId);
         return (Map(r), null);
     }
 
@@ -98,8 +112,10 @@ public class ReviewRatingService(AppDbContext db)
         var r = await db.Reviews.FindAsync(reviewId);
         if (r is null) return "Review không tồn tại.";
         if (r.UserId != userId && role != "admin") return "Không có quyền xoá.";
+        var movieId = r.MovieId;
         db.Reviews.Remove(r);
         await db.SaveChangesAsync();
+        await RefreshMovieAggregateCachesAsync(db, movieId);
         return null;
     }
 
@@ -129,6 +145,7 @@ public class ReviewRatingService(AppDbContext db)
         }
 
         await db.SaveChangesAsync();
+        await RefreshMovieAggregateCachesAsync(db, movieId);
         return null;
     }
 
@@ -136,14 +153,14 @@ public class ReviewRatingService(AppDbContext db)
     {
         var m = await db.Movies.AsNoTracking()
             .Where(mv => mv.Id == movieId && mv.Status == "published")
-            .Select(mv => new
-            {
-                Avg = mv.Ratings.Any() ? mv.Ratings.Average(x => (double)x.Score) : 0.0,
-                Cnt = mv.Ratings.Count,
-            })
+            .Select(mv => new { mv.AvgRatingCached, mv.RatingCountCached })
             .FirstOrDefaultAsync();
 
-        return m is null ? null : new MovieRatingResponse(Math.Round(m.Avg, 1), m.Cnt);
+        return m is null
+            ? null
+            : new MovieRatingResponse(
+                m.RatingCountCached > 0 ? Math.Round(m.AvgRatingCached, 1) : 0,
+                m.RatingCountCached);
     }
 
     private async Task<ReviewDto?> ProjectReviewAsync(Guid id) =>

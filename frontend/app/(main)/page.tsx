@@ -8,8 +8,8 @@ import FeaturedCelebrities from "@/components/featured-celebrities"
 import LatestNews from "@/components/latest-news"
 import TrailerSection from "@/components/trailer-section"
 
-/** Avoid blocking the build when the API is unreachable (CI/Vercel route timeout). */
-export const dynamic = "force-dynamic"
+/** ISR: catalog BE đã cache Redis; giảm TTFB so với force-dynamic (M10-T8). */
+export const revalidate = 120
 
 export default function Home() {
   return (
